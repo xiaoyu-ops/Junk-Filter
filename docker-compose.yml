@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: junkfilter-db
+    environment:
+      POSTGRES_USER: junkfilter
+      POSTGRES_PASSWORD: junkfilter123
+      POSTGRES_DB: junkfilter
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    networks:
+      - junkfilter-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U junkfilter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: junkfilter-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - junkfilter-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  junkfilter-network:
+    driver: bridge

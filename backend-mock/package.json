@@ -1,0 +1,18 @@
+{
+  "name": "truesignal-mock-backend",
+  "version": "1.0.0",
+  "description": "TrueSignal Mock 后端服务器 - 用于前端开发测试",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "mock",
+    "backend",
+    "api",
+    "sse"
+  ],
+  "author": "",
+  "license": "MIT"
+}

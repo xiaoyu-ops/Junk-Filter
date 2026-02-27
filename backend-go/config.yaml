@@ -1,0 +1,27 @@
+# TrueSignal Backend (Go)
+
+## 配置
+
+database:
+  host: localhost
+  port: 5432
+  user: truesignal
+  password: truesignal123
+  dbname: truesignal
+  sslmode: disable
+
+redis:
+  host: localhost
+  port: 6379
+  db: 0
+
+server:
+  port: 8080
+
+# RSS Ingestion 配置
+ingestion:
+  worker_count: 5
+  timeout: 10s
+  retry_max: 3
+  fetch_interval: 1h
+

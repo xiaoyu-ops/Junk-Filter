@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Junk Filter - 任务分发</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#18181b", 
+                        "background-light": "#f8f9fa",
+                        "background-dark": "#121212",
+                        "surface-light": "#ffffff",
+                        "surface-dark": "#1e1e1e",
+                        "sidebar-light": "#f8f9fa",
+                        "sidebar-dark": "#1F2937", 
+                        "chat-bg-dark": "#111827", 
+                        "active-light": "#e5e7eb",
+                        "active-dark": "#4B5563", 
+                        "accent-dark": "#111827", 
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                        sans: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                    },
+                    animation: {
+                        'bounce-slow': 'bounce 1.4s infinite ease-in-out both',
+                    }
+                },
+            },
+        };
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .typing-dot {
+            width: 6px;
+            height: 6px;
+            background-color: currentColor;
+            border-radius: 50%;
+            display: inline-block;
+            animation: bounce-delay 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce-delay {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-[#0f0f11] text-gray-900 dark:text-gray-100 min-h-screen flex flex-col font-sans transition-colors duration-200">
+<header class="w-full px-8 py-4 flex items-center justify-between sticky top-0 z-10 bg-white dark:bg-[#0f0f11] backdrop-blur-sm border-b border-gray-100 dark:border-gray-800">
+<div class="flex items-center gap-3">
+<span class="material-icons-outlined text-3xl text-gray-900 dark:text-gray-100">delete_outline</span>
+<h1 class="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Junk Filter</h1>
+</div>
+<nav class="flex items-center space-x-6">
+<a class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors" href="#">主页</a>
+<a class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors" href="#">时间轴</a>
+<a class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors" href="#">配置中心</a>
+<a class="text-sm font-medium text-gray-900 dark:text-gray-100 font-semibold" href="#">分发任务</a>
+</nav>
+<button class="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#27272a] dark:text-gray-400 transition-colors" onclick="document.documentElement.classList.toggle('dark')">
+<span class="material-icons-outlined dark:hidden">dark_mode</span>
+<span class="material-icons-outlined hidden dark:block">light_mode</span>
+</button>
+</header>
+<main class="flex-grow px-8 py-6 h-[calc(100vh-80px)] relative">
+<div class="flex h-full gap-6">
+<aside class="w-1/3 min-w-[300px] flex flex-col bg-[#F8F9FA] dark:bg-[#1F2937] rounded-xl p-6 shadow-sm overflow-hidden relative border border-gray-100 dark:border-gray-700/30">
+<h2 class="text-xl font-bold mb-6 text-gray-900 dark:text-gray-100">任务列表</h2>
+<div class="relative group">
+<button class="w-full py-3 mb-6 bg-white border border-gray-200 hover:bg-gray-50 dark:bg-gray-700 dark:border-transparent dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg flex items-center justify-center gap-2 transition-colors font-medium shadow-sm">
+<span class="material-icons-outlined text-lg">add_circle_outline</span>
+                        添加任务
+                    </button>
+<div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] bg-gray-900 dark:bg-gray-200 text-white dark:text-gray-900 text-xs px-3 py-2 rounded shadow-lg pointer-events-none opacity-100 transition-opacity z-20">
+<div class="font-semibold mb-0.5">开始新任务</div>
+<div class="text-gray-300 dark:text-gray-600 text-[10px]">点击此处配置新的AI过滤器</div>
+<div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-200"></div>
+</div>
+</div>
+<div class="flex flex-col gap-3 overflow-y-auto pr-2 custom-scrollbar">
+<div class="p-4 bg-[#E5E7EB] dark:bg-[#4B5563] rounded-lg cursor-pointer border-l-4 border-gray-800 dark:border-gray-200 transition-all shadow-sm">
+<h3 class="font-medium text-gray-900 dark:text-white">每日新闻摘要 - 09:00 AM</h3>
+</div>
+<div class="p-4 bg-white dark:bg-[#374151] hover:bg-gray-50 dark:hover:bg-[#4B5563]/80 rounded-lg cursor-pointer border border-gray-200 dark:border-transparent hover:border-gray-300 dark:hover:border-gray-500 transition-all shadow-sm">
+<h3 class="font-medium text-gray-700 dark:text-gray-300">每周数据报告 - 周一 10:00 AM</h3>
+</div>
+<div class="p-4 bg-white dark:bg-[#374151] hover:bg-gray-50 dark:hover:bg-[#4B5563]/80 rounded-lg cursor-pointer border border-gray-200 dark:border-transparent hover:border-gray-300 dark:hover:border-gray-500 transition-all shadow-sm">
+<h3 class="font-medium text-gray-700 dark:text-gray-300">社交媒体监控 - 每小时</h3>
+</div>
+</div>
+</aside>
+<section class="flex-1 bg-white dark:bg-[#111827] rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm flex flex-col overflow-hidden relative">
+<div class="flex-1 p-8 overflow-y-auto space-y-8">
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center border border-gray-200 dark:border-transparent">
+<span class="material-icons-outlined text-sm text-gray-600 dark:text-gray-300">person</span>
+</div>
+<div class="flex flex-col space-y-1 max-w-3xl">
+<span class="font-bold text-gray-900 dark:text-gray-300 text-sm">User:</span>
+<p class="text-[#111827] dark:text-gray-100 leading-relaxed text-lg">
+                                请每天早上9点帮我总结一下最新的科技新闻。
+                            </p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-indigo-600 flex items-center justify-center">
+<span class="material-icons-outlined text-sm text-white dark:text-white">smart_toy</span>
+</div>
+<div class="flex flex-col space-y-1 max-w-3xl">
+<span class="font-bold text-gray-900 dark:text-gray-300 text-sm">AI:</span>
+<p class="text-[#111827] dark:text-gray-100 leading-relaxed text-lg">
+                                好的，已为您创建每日9点的科技新闻摘要任务。
+                            </p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-8 h-8 rounded-full bg-black dark:bg-indigo-600 flex items-center justify-center">
+<span class="material-icons-outlined text-sm text-white dark:text-white">smart_toy</span>
+</div>
+<div class="flex flex-col space-y-1 max-w-3xl">
+<span class="font-bold text-gray-900 dark:text-gray-300 text-sm">AI:</span>
+<div class="text-gray-500 dark:text-gray-400 text-lg flex items-center h-7 space-x-1">
+<span class="typing-dot"></span>
+<span class="typing-dot"></span>
+<span class="typing-dot"></span>
+</div>
+</div>
+</div>
+</div>
+<div class="p-4 border-t border-gray-100 dark:border-gray-800 bg-white dark:bg-[#111827]">
+<div class="relative flex items-center w-full">
+<input class="w-full pl-5 pr-14 py-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1F2937] text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-indigo-500/50 focus:border-gray-300 dark:focus:border-transparent transition-all shadow-sm" placeholder="输入消息..." type="text"/>
+<button class="absolute right-2 p-2 bg-gray-100 hover:bg-gray-200 dark:bg-[#374151] dark:hover:bg-[#4B5563] rounded-lg text-gray-600 dark:text-white transition-colors flex items-center justify-center">
+<span class="material-icons-outlined transform -rotate-45" style="font-size: 20px;">send</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+<div class="absolute top-6 right-8 bg-white dark:bg-[#1F2937] border border-gray-200 dark:border-gray-700 shadow-xl rounded-lg px-4 py-3 flex items-center gap-3 animate-[slideIn_0.3s_ease-out]">
+<div class="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+<span class="material-icons-outlined text-green-600 dark:text-green-400 text-sm">check</span>
+</div>
+<span class="text-sm font-medium text-gray-800 dark:text-gray-200">Task Created Successfully</span>
+</div>
+</main>
+<style>
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: rgba(156, 163, 175, 0.5);
+            border-radius: 20px;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: rgba(75, 85, 99, 0.5);
+        }
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+
+<script src="js/common.js"></script>
+<script src="js/task-page.js"></script>
+</body></html>

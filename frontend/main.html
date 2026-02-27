@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Junk Filter - 主页</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        primary: "#18181b", 
+                        "background-light": "#f8f9fa",
+                        "background-dark": "#121212",
+                        "surface-light": "#ffffff",
+                        "surface-dark": "#1e1e1e",
+                        "sidebar-light": "#f8f9fa",
+                        "sidebar-dark": "#1F2937", 
+                        "chat-bg-dark": "#111827", 
+                        "active-light": "#e5e7eb",
+                        "active-dark": "#4B5563", 
+                        "accent-dark": "#111827", 
+                    },
+                    fontFamily: {
+                        display: ["Inter", "sans-serif"],
+                        sans: ["Inter", "sans-serif"],
+                    },
+                    borderRadius: {
+                        DEFAULT: "0.5rem",
+                    },
+                },
+            },
+        };
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-surface-light dark:bg-[#0f0f11] text-gray-900 dark:text-gray-100 h-screen flex flex-col font-sans transition-colors duration-200 overflow-hidden relative">
+<header class="w-full px-8 py-4 flex items-center justify-between absolute top-0 left-0 z-50 bg-transparent">
+<div class="flex items-center gap-3">
+<span class="material-icons-outlined text-3xl text-gray-900 dark:text-gray-100">delete_outline</span>
+<h1 class="text-xl font-bold tracking-tight text-gray-900 dark:text-gray-100">Junk Filter</h1>
+</div>
+<nav class="flex items-center space-x-6">
+<a class="text-sm font-medium text-gray-900 dark:text-gray-100 font-semibold transition-colors" href="#">主页</a>
+<a class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors" href="#">时间轴</a>
+<a class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors" href="#">配置中心</a>
+<a class="text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors" href="#">分发任务</a>
+</nav>
+<button class="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#27272a] dark:text-gray-400 transition-colors" onclick="document.documentElement.classList.toggle('dark')">
+<span class="material-icons-outlined dark:hidden">dark_mode</span>
+<span class="material-icons-outlined hidden dark:block">light_mode</span>
+</button>
+</header>
+<main class="flex-grow flex flex-col items-center justify-center px-4 w-full h-full relative z-0">
+<div class="w-full max-w-3xl flex flex-col items-center justify-center space-y-12 mb-10">
+<div class="flex flex-col items-center space-y-8 text-center">
+<div class="w-24 h-24 bg-gray-50 dark:bg-gray-800 rounded-3xl flex items-center justify-center shadow-sm ring-1 ring-gray-100 dark:ring-gray-700">
+<span class="material-icons-outlined text-6xl text-gray-800 dark:text-gray-200">delete_outline</span>
+</div>
+<h2 class="text-4xl font-bold text-gray-900 dark:text-white tracking-tight">What do you want to filter?</h2>
+</div>
+<div class="w-full relative group max-w-2xl mx-auto">
+<div class="flex items-center w-full rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1F2937] shadow-xl shadow-gray-200/50 dark:shadow-none transition-all focus-within:ring-4 focus-within:ring-gray-100 dark:focus-within:ring-gray-800 focus-within:border-gray-300 dark:focus-within:border-gray-600 p-1.5">
+<div class="relative">
+<button class="flex items-center gap-2 px-5 py-3 text-sm font-medium text-gray-700 dark:text-gray-200 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700 rounded-full transition-colors focus:outline-none whitespace-nowrap border border-transparent hover:border-gray-200 dark:hover:border-gray-600 h-full">
+<span>Select Platform</span>
+<span class="material-icons-outlined text-base">expand_more</span>
+</button>
+</div>
+<div class="h-6 w-px bg-gray-200 dark:bg-gray-600 mx-2"></div>
+<div class="flex-1 flex items-center relative">
+<div class="pl-2 flex items-center pointer-events-none">
+<span class="material-icons-outlined text-gray-400 dark:text-gray-500 text-xl">search</span>
+</div>
+<input class="w-full pl-3 pr-4 py-3 bg-transparent border-none text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-0 text-lg" placeholder="Search for keywords..." type="text"/>
+</div>
+<div class="">
+<button class="p-3 bg-gray-900 hover:bg-gray-800 dark:bg-gray-700 dark:hover:bg-gray-600 text-white rounded-full transition-colors flex items-center justify-center shadow-md">
+<span class="material-icons-outlined text-xl">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+<div class="flex flex-wrap justify-center gap-3 w-full max-w-2xl">
+<button class="px-5 py-2.5 rounded-full text-sm font-medium bg-white hover:bg-gray-50 border border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all hover:shadow-sm">
+                    Recent News
+                </button>
+<button class="px-5 py-2.5 rounded-full text-sm font-medium bg-white hover:bg-gray-50 border border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all hover:shadow-sm">
+                    Social Media Spam
+                </button>
+<button class="px-5 py-2.5 rounded-full text-sm font-medium bg-white hover:bg-gray-50 border border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all hover:shadow-sm">
+                    Email Filtering
+                </button>
+<button class="px-5 py-2.5 rounded-full text-sm font-medium bg-white hover:bg-gray-50 border border-gray-200 dark:bg-gray-800/50 dark:border-gray-700 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 transition-all hover:shadow-sm">
+                    Ad Block Rules
+                </button>
+</div>
+</div>
+</main>
+
+<script src="js/common.js"></script>
+<script src="js/main-page.js"></script>
+</body></html>

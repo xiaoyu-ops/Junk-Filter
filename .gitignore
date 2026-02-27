@@ -1,0 +1,53 @@
+# 脚本文件夹（允许追踪，但排除特定临时文件）
+scripts/*
+!scripts/
+!scripts/*.bat
+!scripts/*.sh
+!scripts/README.md
+
+# 环境配置
+*.env
+.env.local
+.env.*.local
+
+# 临时测试文件
+test-sse-server.js
+test-sse.js
+integration_test.py
+
+# Go
+backend-go/vendor/
+*.out
+*.a
+*.so
+
+# Python
+backend-python/__pycache__/
+backend-python/*.pyc
+backend-python/.venv/
+backend-python/venv/
+backend-python/env/
+backend-python/.pytest_cache/
+backend-python/.coverage
+
+# Node.js
+backend-mock/node_modules/
+frontend-vue/node_modules/
+package-lock.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+
+# Docker
+.dockerignore
+
+# Logs
+logs/
+*.log
