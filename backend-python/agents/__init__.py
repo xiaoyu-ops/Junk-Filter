@@ -1,4 +1,4 @@
-"""TrueSignal agents 模块"""
+"""Junk Filter agents 模块"""
 
 from .content_evaluator import ContentEvaluationAgent
 

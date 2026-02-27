@@ -146,16 +146,3 @@ func (sh *SourceHandler) FetchSourceNow(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Source fetch triggered"})
 }
-
-// RegisterSourceRoutes registers source routes
-func RegisterSourceRoutes(router *gin.Engine, handler *SourceHandler) {
-	sources := router.Group("/api/sources")
-	{
-		sources.POST("", handler.CreateSource)
-		sources.GET("", handler.ListSources)
-		sources.GET("/:id", handler.GetSource)
-		sources.PUT("/:id", handler.UpdateSource)
-		sources.DELETE("/:id", handler.DeleteSource)
-		sources.POST("/:id/fetch", handler.FetchSourceNow)
-	}
-}

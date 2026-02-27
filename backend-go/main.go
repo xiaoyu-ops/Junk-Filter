@@ -53,6 +53,7 @@ type AppContext struct {
 	SourceRepo     *repositories.SourceRepository
 	ContentRepo    *repositories.ContentRepository
 	EvaluationRepo *repositories.EvaluationRepository
+	MessageRepo    *repositories.MessageRepository
 }
 
 var appCtx *AppContext
@@ -82,6 +83,7 @@ func main() {
 	sourceRepo := repositories.NewSourceRepository(db)
 	contentRepo := repositories.NewContentRepository(db)
 	evaluationRepo := repositories.NewEvaluationRepository(db)
+	messageRepo := repositories.NewMessageRepository(db)
 
 	// 初始化 services
 	contentService := services.NewContentService(rdb)
@@ -111,6 +113,7 @@ func main() {
 		SourceRepo:     sourceRepo,
 		ContentRepo:    contentRepo,
 		EvaluationRepo: evaluationRepo,
+		MessageRepo:    messageRepo,
 	}
 
 	log.Println("\n========== JunkFilter Backend ==========")
@@ -119,7 +122,7 @@ func main() {
 	log.Printf("Server: listening on :%d\n", cfg.Server.Port)
 	log.Println("========================================\n")
 
-	// 启动 RSS 服务
+	// 启动 RSS 服务（异步，不会阻塞）
 	fetchInterval := 1 * time.Hour
 	if cfg.Ingestion.FetchInterval != "" {
 		if d, err := time.ParseDuration(cfg.Ingestion.FetchInterval); err == nil {
@@ -127,13 +130,21 @@ func main() {
 		}
 	}
 
-	if err := rssService.Start(context.Background(), fetchInterval); err != nil {
-		log.Printf("Error starting RSS service: %v", err)
-	}
+	// 在后台启动 RSS 服务（不要在主线程等待）
+	go func() {
+		if err := rssService.Start(context.Background(), fetchInterval); err != nil {
+			log.Printf("Error starting RSS service: %v", err)
+		}
+	}()
 	defer rssService.Stop()
 
-	// 启动 HTTP 服务
-	startServer(cfg.Server.Port)
+	// 启动 HTTP 服务（在后台异步运行）
+	log.Println("DEBUG: About to call startServer()")
+	go startServer(cfg.Server.Port)
+	log.Println("DEBUG: startServer() started in background")
+
+	// 保持主程序运行
+	select {}
 }
 
 func loadConfig() *Config {
@@ -235,11 +246,22 @@ func startServer(port int) {
 	sourceHandler := handlers.NewSourceHandler(appCtx.SourceRepo, appCtx.RSSService)
 	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo)
 	evaluationHandler := handlers.NewEvaluationHandler(appCtx.EvaluationRepo)
+	messageHandler := handlers.NewMessageHandler(appCtx.MessageRepo)
+	chatHandler := handlers.NewChatHandler(appCtx.MessageRepo, "http://localhost:8081")
+	taskChatHandler := handlers.NewTaskChatHandler(
+		appCtx.MessageRepo,
+		appCtx.SourceRepo,
+		appCtx.EvaluationRepo,
+		"http://localhost:8081",
+	)
 
 	// 注册路由
 	handlers.RegisterSourceRoutes(router, sourceHandler)
 	handlers.RegisterContentRoutes(router, contentHandler)
 	handlers.RegisterEvaluationRoutes(router, evaluationHandler)
+	handlers.RegisterMessageRoutes(router, messageHandler)
+	handlers.RegisterChatRoutes(router, chatHandler)
+	handlers.RegisterTaskChatRoutes(router, taskChatHandler)
 
 	// 健康检查端点
 	router.GET("/health", func(c *gin.Context) {
@@ -249,9 +271,12 @@ func startServer(port int) {
 		})
 	})
 
-	log.Printf("Starting HTTP server on port %d\n", port)
-	if err := router.Run(fmt.Sprintf(":%d", port)); err != nil {
+	addr := fmt.Sprintf("0.0.0.0:%d", port)
+	log.Printf("DEBUG: About to start server on %s\n", addr)
+	log.Printf("DEBUG: router.Run() is blocking call\n")
+	if err := router.Run(addr); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
+	log.Printf("DEBUG: Server exited (this should not print)\n")
 }
 

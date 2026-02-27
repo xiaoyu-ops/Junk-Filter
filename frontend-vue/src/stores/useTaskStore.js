@@ -18,7 +18,7 @@ export const useTaskStore = defineStore('task', () => {
   const isLoading = ref(false)
 
   // 选中的任务 ID
-  const selectedTaskId = ref('task_002')
+  const selectedTaskId = ref(null)
 
   // 模态框状态
   const isModalOpen = ref(false)

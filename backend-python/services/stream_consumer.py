@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from typing import Optional
 import redis.asyncio as aioredis
 import asyncpg
@@ -8,6 +9,9 @@ from models.evaluation import StreamMessage
 from services.evaluator import EvaluatorService
 from services.db_service import DBService
 from agents.content_evaluator import ContentEvaluationAgent
+from config import settings
+from config import settings
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +37,16 @@ class StreamConsumer:
         # Services
         self.db_service = DBService(db_pool)
 
-        # ContentEvaluationAgent - 使用LangGraph框架进行智能评估
+        # ContentEvaluationAgent - 从 settings 读取配置
+        model_id = settings.llm_model_id or settings.llm_model
+        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY","")
+        api_base = settings.llm_base_url or os.getenv("LLM_BASE_URL","https://elysiver.h-e.top/v1")
+        logger.info(f"Initializing ContentEvaluationAgent with model:{model_id}")
+
         self.evaluator_agent = ContentEvaluationAgent(
-            model="gpt-4",  # 或其他配置，可从环境变量读取
+            model=model_id,
+            api_key=api_key,
+            api_base=api_base,
         )
 
         # Legacy evaluator service 保留（用于备份）

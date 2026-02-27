@@ -187,16 +187,17 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
 import { useTaskStore } from '@/stores/useTaskStore'
+import { useConfigStore } from '@/stores/useConfigStore'
 import { useAPI } from '@/composables/useAPI'
 import { useScrollLock } from '@/composables/useScrollLock'
-import { useSSE } from '@/composables/useSSE'
 import { useToast } from '@/composables/useToast'
 import ChatMessage from './ChatMessage.vue'
 import SkeletonLoader from './SkeletonLoader.vue'
 import ErrorCard from './ErrorCard.vue'
 
 const taskStore = useTaskStore()
-const { messages: messagesAPI } = useAPI()
+const configStore = useConfigStore()
+const { messages: messagesAPI, chat: chatAPI } = useAPI()
 const { show: showToast } = useToast()
 
 // 消息列表
@@ -216,6 +217,9 @@ const isLoading = ref(false)
 
 // 当前 AI 消息 ID（用于更新流式文本）
 const currentAiMessageId = ref(null)
+
+// SSE 关闭函数
+const closeSseConnection = ref(null)
 
 // ==================== 搜索功能 ====================
 const searchText = ref('')
@@ -281,7 +285,7 @@ const filteredMessages = computed(() => {
   // 按日期范围过滤
   const now = new Date()
   if (filterDateRange.value !== 'all') {
-    const messageDate = (msg) => new Date(msg.timestamp)
+    const messageDate = (msg) => new Date(msg.timestamp || msg.created_at)
 
     if (filterDateRange.value === 'today') {
       filtered = filtered.filter(msg => {
@@ -362,9 +366,6 @@ const {
   scrollToBottom,
 } = useScrollLock()
 
-// 使用 useSSE Composable
-const { streamingText, connectSSE, closeSSE } = useSSE()
-
 /**
  * 加载消息历史
  */
@@ -378,7 +379,18 @@ const loadMessages = async (taskId) => {
   messagesLoading.value = true
   messagesError.value = null
   try {
-    messages.value = await messagesAPI.list(taskId)
+    const messageList = await messagesAPI.list(taskId)
+    // 规范化消息格式（适配不同后端返回的字段）
+    messages.value = (messageList || []).map(msg => ({
+      id: msg.id || `msg-${Date.now()}`,
+      role: msg.role || 'user',
+      type: msg.type || 'text',
+      content: msg.content || '',
+      timestamp: msg.created_at || msg.timestamp || new Date().toISOString(),
+      created_at: msg.created_at,
+      updated_at: msg.updated_at,
+      read: msg.read === false ? false : true, // 默认标记为已读
+    }))
   } catch (error) {
     console.error('加载消息失败:', error)
     messagesError.value = error
@@ -417,7 +429,10 @@ onMounted(() => {
  */
 onUnmounted(() => {
   removeScrollListener()
-  closeSSE()  // 关闭任何打开的 SSE 连接
+  // 关闭任何打开的 SSE 连接
+  if (closeSseConnection.value) {
+    closeSseConnection.value()
+  }
 })
 
 /**
@@ -468,8 +483,7 @@ const handleSendMessage = async (e) => {
 
   // 保存用户消息到后端
   try {
-    await messagesAPI.save({
-      task_id: taskStore.selectedTaskId,
+    await messagesAPI.save(taskStore.selectedTaskId, {
       role: 'user',
       type: 'text',
       content: trimmedText,
@@ -483,7 +497,7 @@ const handleSendMessage = async (e) => {
   isLoading.value = true
 
   try {
-    // 尝试真实的 SSE 连接
+    // 使用真实的 SSE 连接
     await handleSSEResponse(trimmedText)
   } catch (sseError) {
     console.warn('[TaskChat] SSE 失败，降级到模拟响应:', sseError)
@@ -495,17 +509,11 @@ const handleSendMessage = async (e) => {
 }
 
 /**
- * Handle real SSE streaming response - Fixed version
+ * 处理真实 SSE 流式聊天响应（Agent 调优与咨询）
+ * 从 Go 后端的 /api/tasks/{id}/chat 接收自然语言回复
  */
 const handleSSEResponse = async (userInput) => {
-  // Build request URL (configure in environment variables)
-  // Use Mock backend (3000) for SSE chat, NOT Go backend (8080)
-  const mockUrl = import.meta.env.VITE_MOCK_URL || 'http://localhost:3000'
-
-  // ⚠️ Key fix: Add required parameters taskId and message
-  const streamEndpoint = `${mockUrl}/api/chat/stream?taskId=${taskStore.selectedTaskId}&message=${encodeURIComponent(userInput)}`
-
-  // 创建 AI 消息占位符（延迟添加）
+  // 创建 AI 消息占位符
   const aiMessagePlaceholder = {
     id: `msg-ai-${Date.now()}`,
     role: 'ai',
@@ -513,101 +521,132 @@ const handleSSEResponse = async (userInput) => {
     content: '',
     timestamp: new Date().toISOString(),
     read: false,
+    processing: true,
+    messageType: 'ai_reply',  // 标记为自然语言回复
   }
 
   currentAiMessageId.value = aiMessagePlaceholder.id
-
-  // ⚠️ 修复：跟踪消息是否已添加（防止重复或缺失）
   let aiMessageAdded = false
+  let aiResponseContent = ''
+  let parameterUpdates = null
+  let referencedCards = []
 
   try {
-    // 使用 SSE 连接流式接收
-    await connectSSE(streamEndpoint, {
-      // ⚠️ 修复：首次接收数据时才添加消息
-      onStreamingText: (text) => {
+    // 启动新的任务聊天 API（而不是旧的 stream API）
+    closeSseConnection.value = chatAPI.taskChat(
+      taskStore.selectedTaskId,
+      userInput,
+      (eventData) => {
+        console.log('[Task Chat Event]', eventData)
+
+        // 首次接收数据时添加占位符
         if (!aiMessageAdded) {
           messages.value.push(aiMessagePlaceholder)
           aiMessageAdded = true
         }
 
-        const messageIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
-        if (messageIndex !== -1) {
-          messages.value[messageIndex].content = text
-          // 触发 watch 以更新滚动
-          messages.value[messageIndex] = { ...messages.value[messageIndex] }
+        // 处理不同的事件状态
+        if (eventData.status === 'processing') {
+          // 更新占位符显示处理中状态
+          const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
+          if (msgIndex !== -1) {
+            messages.value[msgIndex].processing = true
+            messages.value[msgIndex] = { ...messages.value[msgIndex] }
+          }
+        } else if (eventData.status === 'completed') {
+          // 处理完成，更新自然语言回复
+          if (eventData.result) {
+            const result = eventData.result
+            aiResponseContent = result.reply  // 自然语言回复
+
+            // 提取参数更新和卡片引用
+            parameterUpdates = result.parameter_updates
+            referencedCards = result.referenced_card_ids || []
+
+            const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
+            if (msgIndex !== -1) {
+              messages.value[msgIndex].content = aiResponseContent
+              messages.value[msgIndex].processing = false
+              messages.value[msgIndex].messageType = 'ai_reply'
+              messages.value[msgIndex].referencedCards = referencedCards
+              messages.value[msgIndex].parameterUpdates = parameterUpdates
+              messages.value[msgIndex] = { ...messages.value[msgIndex] }
+
+              // 如果有参数更新建议，在控制台输出
+              if (parameterUpdates) {
+                console.log('[Agent Suggestion] 参数更新建议:', parameterUpdates)
+              }
+            }
+          }
+        } else if (eventData.status === 'stream_end') {
+          // 流完成标记，正常结束
+          console.log('[Task Chat] 流正常完成')
+        } else if (eventData.status === 'error') {
+          // 错误处理
+          const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
+          if (msgIndex !== -1) {
+            messages.value[msgIndex].content = `⚠️ Agent 响应失败: ${eventData.error || '未知错误'}`
+            messages.value[msgIndex].processing = false
+            messages.value[msgIndex].type = 'error'
+            messages.value[msgIndex] = { ...messages.value[msgIndex] }
+          }
         }
-      },
+      }
+    )
 
-      // 处理执行卡片或其他特殊消息
-      onMessage: (msgData) => {
-        if (msgData.type === 'execution') {
-          // 添加执行卡片消息
-          messages.value.push({
-            id: `msg-execution-${Date.now()}`,
-            role: 'ai',
-            type: 'execution',
-            executionData: msgData.data,
-            timestamp: new Date().toISOString(),
-            read: false,
-          })
+    // 等待聊天完成（通过 Promise 或 timeout）
+    await new Promise(resolve => {
+      const checkCompletion = setInterval(() => {
+        const msg = messages.value.find(m => m.id === aiMessagePlaceholder.id)
+        if (msg && !msg.processing) {
+          clearInterval(checkCompletion)
+          resolve()
         }
-      },
+      }, 100)
 
-      // 流完成时
-      onComplete: (finalText, data) => {
-        console.log('[SSE] 流式回复完成:', finalText)
-        currentAiMessageId.value = null
+      // 30秒超时
+      setTimeout(() => {
+        clearInterval(checkCompletion)
+        resolve()
+      }, 30000)
+    })
 
-        // ⚠️ 修复：确保消息已添加
-        if (!aiMessageAdded) {
-          messages.value.push(aiMessagePlaceholder)
-          aiMessageAdded = true
-        }
-
-        // 保存 AI 消息到后端
-        messagesAPI.save({
-          task_id: taskStore.selectedTaskId,
+    // 保存 AI 消息到后端
+    if (aiResponseContent) {
+      try {
+        await messagesAPI.save(taskStore.selectedTaskId, {
           role: 'ai',
           type: 'text',
-          content: finalText,
-        }).catch(error => {
-          console.error('保存 AI 消息失败:', error)
+          content: aiResponseContent,
+          metadata: JSON.stringify({
+            messageType: 'ai_reply',
+            parameterUpdates: parameterUpdates,
+            referencedCards: referencedCards,
+          }),
         })
-      },
-
-      // 错误处理 - 修复版
-      onError: (err) => {
-        console.error('[SSE] 流式回复错误:', err)
-
-        // ⚠️ 修复：只有在完全没数据的情况下才显示错误卡片
-        if (!aiMessageAdded) {
-          messages.value.push({
-            id: `msg-error-${Date.now()}`,
-            role: 'ai',
-            type: 'error',
-            content: `流式回复失败: ${err}`,
-            timestamp: new Date().toISOString(),
-            read: false,
-          })
-        } else {
-          // 已有部分数据，只在控制台记录错误
-          console.warn('[SSE] 已接收部分数据，忽略错误卡片')
-        }
-
-        throw err
-      },
-    })
+      } catch (error) {
+        console.error('保存 AI 消息失败:', error)
+      }
+    }
   } catch (error) {
-    console.error('[SSE] 连接失败:', error)
-    throw error
+    console.error('[Task Chat] 连接失败:', error)
+
+    // 如果消息已添加，标记为错误；否则抛出异常让调用方降级
+    const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
+    if (msgIndex !== -1) {
+      messages.value[msgIndex].content = `⚠️ 连接失败: ${error.message}`
+      messages.value[msgIndex].processing = false
+      messages.value[msgIndex].type = 'error'
+    } else {
+      throw error
+    }
+  } finally {
+    currentAiMessageId.value = null
   }
 }
 
 /**
  * 模拟 AI 回复（降级用或演示用）
- * 这个函数会被保留，用于：
- * 1. SSE 连接失败时的降级方案
- * 2. 本地开发没有后端时的演示
  */
 const simulateAiResponse = async (userInput) => {
   // 模拟网络延迟
@@ -634,25 +673,25 @@ const simulateAiResponse = async (userInput) => {
 
   messages.value.push(aiMessage)
 
-  // 50% 概率添加执行卡片
+  // 模拟评估结果卡片
   if (Math.random() > 0.5) {
     await new Promise(resolve => setTimeout(resolve, 500))
 
-    const executionMessage = {
-      id: `msg-execution-${Date.now()}`,
+    const evaluationMessage = {
+      id: `msg-eval-${Date.now()}`,
       role: 'ai',
-      type: 'execution',
-      executionData: {
-        status: 'success',
-        itemCount: Math.floor(Math.random() * 100) + 10,
-        summary: '成功处理了任务，获取了相关信息。',
-        timestamp: new Date().toISOString(),
+      type: 'evaluation',
+      evaluationData: {
+        innovation_score: Math.floor(Math.random() * 10) + 1,
+        depth_score: Math.floor(Math.random() * 10) + 1,
+        decision: ['推荐', '中立', '不推荐'][Math.floor(Math.random() * 3)],
+        tldr: '这是一条模拟的总结信息',
       },
       timestamp: new Date().toISOString(),
       read: false,
     }
 
-    messages.value.push(executionMessage)
+    messages.value.push(evaluationMessage)
   }
 }
 

@@ -135,12 +135,3 @@ func (ch *ContentHandler) GetContentWithEvaluation(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
-
-// RegisterContentRoutes registers content routes
-func RegisterContentRoutes(router *gin.Engine, handler *ContentHandler) {
-	contents := router.Group("/api/content")
-	{
-		contents.GET("", handler.ListContent)
-		contents.GET("/:id", handler.GetContentWithEvaluation)
-	}
-}

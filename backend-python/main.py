@@ -5,6 +5,8 @@ import logging
 import signal
 import sys
 import os
+import uvicorn
+from threading import Thread
 
 from config import settings
 from services.stream_consumer import StreamConsumer
@@ -77,10 +79,12 @@ class Application:
     def __init__(self):
         self.consumer = None
         self.consumer_task = None
+        self.fastapi_app = None
+        self.uvicorn_server = None
 
     async def initialize(self):
         """Initialize all services"""
-        logger.info("\n========== TrueSignal Python Evaluator ==========")
+        logger.info("\n========== Junk Filter Python Evaluator ==========")
 
         # Initialize database
         await Database.initialize()
@@ -96,6 +100,10 @@ class Application:
         )
         await self.consumer.initialize()
 
+        # Import FastAPI app
+        from api_server import app
+        self.fastapi_app = app
+
         logger.info("================================================\n")
 
     async def run(self):
@@ -103,12 +111,25 @@ class Application:
         try:
             await self.initialize()
 
-            # Start consumer
+            # Start consumer in background
             self.consumer_task = asyncio.create_task(self.consumer.run())
 
             logger.info("Application running. Press Ctrl+C to stop.")
+            logger.info(f"FastAPI server will start on http://0.0.0.0:{settings.api_port}")
 
-            # Wait for consumer task
+            # Start FastAPI server in a separate thread
+            def run_fastapi():
+                uvicorn.run(
+                    self.fastapi_app,
+                    host="0.0.0.0",
+                    port=settings.api_port,
+                    log_level="info"
+                )
+
+            fastapi_thread = Thread(target=run_fastapi, daemon=True)
+            fastapi_thread.start()
+
+            # Wait for consumer task (keep the app running)
             await self.consumer_task
 
         except Exception as e:

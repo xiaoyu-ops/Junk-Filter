@@ -289,6 +289,24 @@ export const useConfigStore = defineStore('config', () => {
     maxTokens.value = parseInt(tokens)
   }
 
+  // 获取当前配置参数（用于 API 调用）
+  const getEvaluationConfig = () => {
+    return {
+      temperature: temperature.value,
+      topP: topP.value,
+      maxTokens: maxTokens.value,
+    }
+  }
+
+  // 获取当前 LLM 配置（模型 + API Key + Base URL）
+  const getLLMConfig = () => {
+    return {
+      modelName: modelName.value,
+      apiKey: apiKey.value,
+      baseUrl: baseUrl.value,
+    }
+  }
+
   return {
     // 状态
     apiKey,
@@ -329,5 +347,7 @@ export const useConfigStore = defineStore('config', () => {
     toggleSourceExpanded,
     resetNewRssForm,
     resetNewModelForm,
+    getEvaluationConfig,
+    getLLMConfig,
   }
 })

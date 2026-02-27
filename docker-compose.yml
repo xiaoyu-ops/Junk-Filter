@@ -6,9 +6,9 @@ services:
     image: postgres:15-alpine
     container_name: junkfilter-db
     environment:
-      POSTGRES_USER: junkfilter
-      POSTGRES_PASSWORD: junkfilter123
-      POSTGRES_DB: junkfilter
+      POSTGRES_USER: truesignal
+      POSTGRES_PASSWORD: truesignal123
+      POSTGRES_DB: truesignal
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
     networks:
       - junkfilter-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U junkfilter"]
+      test: ["CMD-SHELL", "pg_isready -U truesignal"]
       interval: 10s
       timeout: 5s
       retries: 5

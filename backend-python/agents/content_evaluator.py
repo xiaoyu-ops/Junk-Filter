@@ -45,6 +45,7 @@ class ContentEvaluationAgent:
         self,
         model: str = "gpt-4",
         api_key: str = None,
+        api_base: str = None,
         max_retries: int = 2,
     ):
         """
@@ -53,11 +54,23 @@ class ContentEvaluationAgent:
         Args:
             model: LLM 模型名称（gpt-4、gpt-3.5-turbo、claude-3、qwen-max 等）
             api_key: API 密钥
+            api_base: API base URL（支持兼容 OpenAI 的服务）
             max_retries: 最大重试次数
         """
         self.model = model
         self.max_retries = max_retries
-        self.llm = ChatOpenAI(model=model, api_key=api_key, temperature=0.7)
+
+        # 初始化 ChatOpenAI，支持自定义 base_url
+        llm_kwargs = {
+            "model": model,
+            "temperature": 0.7,
+        }
+        if api_key:
+            llm_kwargs["api_key"] = api_key
+        if api_base:
+            llm_kwargs["base_url"] = api_base
+
+        self.llm = ChatOpenAI(**llm_kwargs)
 
         self.system_prompt = """你是一个专业的内容评估专家。
 
@@ -159,6 +172,49 @@ class ContentEvaluationAgent:
             reasoning=final_state.get("reasoning", ""),
         )
 
+    async def evaluate(
+        self,
+        title: str,
+        content: str,
+        url: str = "",
+        temperature: float = None,
+        max_tokens: int = None,
+    ) -> dict:
+        """
+        异步评估方法（用于 FastAPI）
+
+        Args:
+            title: 文章标题
+            content: 文章内容
+            url: 文章 URL（可选）
+            temperature: 温度参数（可选，暂未使用）
+            max_tokens: 最大 token 数（可选，暂未使用）
+
+        Returns:
+            dict: 评估结果字典
+        """
+        import asyncio
+
+        # 在线程池中运行同步的 run 方法，避免阻塞事件循环
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            self.run,
+            title,
+            content,
+            url
+        )
+
+        # 转换 EvaluationResult 对象为字典
+        return {
+            "innovation_score": result.innovation_score,
+            "depth_score": result.depth_score,
+            "decision": result.decision,
+            "key_concepts": result.key_concepts,
+            "tldr": result.tldr,
+            "reasoning": result.reasoning,
+        }
+
     def _evaluate_node(self, state: EvaluationState) -> EvaluationState:
         """LLM 评估节点"""
         user_prompt = f"""
@@ -198,6 +254,10 @@ URL：{state['url']}
             return state
 
         try:
+            # 检查消息列表是否为空
+            if not state.get("messages") or len(state["messages"]) == 0:
+                raise ValueError("没有 LLM 响应消息")
+
             # 获取最后一条消息（LLM 响应）
             last_message = state["messages"][-1]
             response_text = last_message.content
@@ -224,7 +284,7 @@ URL：{state['url']}
             state["reasoning"] = data.get("reasoning", "")[:200]
             state["error"] = ""
 
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
+        except (json.JSONDecodeError, ValueError, TypeError, IndexError) as e:
             state["error"] = f"JSON 解析失败: {str(e)}"
             state["retry_count"] += 1
 

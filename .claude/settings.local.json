@@ -40,7 +40,28 @@
       "Bash(echo:*)",
       "Bash(set DB_USER=junkfilter)",
       "Bash(set DB_PASSWORD=junkfilter123)",
-      "Bash(set DB_NAME=junkfilter)"
+      "Bash(set DB_NAME=junkfilter)",
+      "Bash(python:*)",
+      "Bash(uvicorn:*)",
+      "Bash(cd:*)",
+      "Bash(go run:*)",
+      "Bash(powershell -Command \"Get-Item ''HKCU:\\\\Environment'' | Select-Object -ExpandProperty Property | findstr /i ''LLM\\\\|OPENAI''\")",
+      "Bash(Get-Process)",
+      "Bash(Where-Object {$_ProcessName -like \"*go*\" -or $_ProcessName -like \"*backend*\"})",
+      "Bash(Select-Object ProcessName, ID, StartTime)",
+      "Bash(tasklist:*)",
+      "Bash(unset:*)",
+      "Bash(lsof:*)",
+      "Bash(pkill:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell -NoProfile -Command:*)",
+      "Bash(curl.exe:*)",
+      "Bash(python.exe:*)",
+      "Bash(where:*)",
+      "Bash(conda info:*)",
+      "Bash(python3:*)",
+      "Bash(conda env:*)",
+      "Bash(pwsh:*)"
     ]
   }
 }

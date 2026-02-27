@@ -40,13 +40,21 @@ func (rp *RSSParser) ParseFeed(feedURL string) ([]*FeedItem, error) {
 		return nil, err
 	}
 
+	if feed == nil {
+		return nil, fmt.Errorf("feed is nil")
+	}
+
 	var items []*FeedItem
 	for _, item := range feed.Items {
+		author := ""
+		if item.Author != nil {
+			author = item.Author.Name
+		}
 		feedItem := &FeedItem{
 			Title:       item.Title,
 			Description: item.Description,
 			URL:         item.Link,
-			Author:      item.Author.Name,
+			Author:      author,
 			Content:     item.Content,
 		}
 

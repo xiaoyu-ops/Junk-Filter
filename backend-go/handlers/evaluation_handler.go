@@ -105,12 +105,3 @@ func (eh *EvaluationHandler) ListHighScores(c *gin.Context) {
 
 	c.JSON(http.StatusOK, responses)
 }
-
-// RegisterEvaluationRoutes registers evaluation routes
-func RegisterEvaluationRoutes(router *gin.Engine, handler *EvaluationHandler) {
-	evaluations := router.Group("/api/evaluations")
-	{
-		evaluations.GET("", handler.ListEvaluationsByDecision)
-		evaluations.GET("/high-scores", handler.ListHighScores)
-	}
-}

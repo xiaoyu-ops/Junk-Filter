@@ -20,7 +20,7 @@ export const useAPI = () => {
   const { show: showToast } = useToast()
 
   // API 基础 URL（业务 API - Go 后端）
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8080'
 
   // Mock API URL（消息和 SSE - Mock 后端）
   const mockUrl = import.meta.env.VITE_MOCK_URL || 'http://localhost:3000'
@@ -284,42 +284,55 @@ export const useAPI = () => {
   }
 
   // ==================== 消息相关 API ====================
-  // 注意: 消息 API 暂时继续使用 Mock 后端（G o 后端后续补充）
-  // 可通过 VITE_MOCK_URL 环境变量配置
+  // 已迁移到真实 Go 后端 - 使用 /api/tasks/{id}/messages
 
   const messages = {
     /**
      * 获取任务的消息历史
-     * 保留 Mock 后端的消息存储，转换 source id 为 task id
+     * 调用 Go 后端的 /api/tasks/{id}/messages
      */
     list: async (taskId, { limit = 50, offset = 0 } = {}) => {
       // taskId 可能是 "source-{id}" 格式，需要转换为原始 id 用于查询
       const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
-      return request(
-        `/api/tasks/${actualTaskId}/messages?limit=${limit}&offset=${offset}`,
-        { baseUrl: mockUrl }
-      )
+      try {
+        return await request(
+          `/api/tasks/${actualTaskId}/messages?limit=${limit}&offset=${offset}`,
+          { baseUrl: apiUrl }
+        )
+      } catch (error) {
+        // 如果消息接口失败，返回空数组而不中断
+        console.warn('[API] 获取消息历史失败:', error)
+        return []
+      }
     },
 
     /**
      * 保存消息（用户或 AI 消息）
-     * 消息存储暂时使用 Mock 后端，转换 task_id 为 source id
+     * 调用 Go 后端的 /api/tasks/{id}/messages (POST)
      */
-    save: async (data) => {
-      const messageData = { ...data }
+    save: async (taskId, messageData) => {
+      // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
+      const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
 
-      // 如果 task_id 是 "source-{id}" 格式，转换回数字 id
-      if (messageData.task_id && typeof messageData.task_id === 'string') {
-        if (messageData.task_id.startsWith('source-')) {
-          messageData.task_id = messageData.task_id.replace('source-', '')
-        }
+      // 确保必需字段存在
+      const payload = {
+        role: messageData.role || 'user',
+        type: messageData.type || 'text',
+        content: messageData.content || '',
+        metadata: messageData.metadata || null,
+        ...messageData,
       }
 
-      return request('/api/messages', {
-        baseUrl: mockUrl,
-        method: 'POST',
-        body: JSON.stringify(messageData),
-      })
+      try {
+        return await request(`/api/tasks/${actualTaskId}/messages`, {
+          baseUrl: apiUrl,
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+      } catch (error) {
+        console.error('[API] 保存消息失败:', error)
+        throw error
+      }
     },
 
     /**
@@ -401,6 +414,232 @@ export const useAPI = () => {
     },
   }
 
+  // ==================== 聊天相关 API ====================
+  // 使用 SSE (Server-Sent Events) 进行流式聊天
+
+  const chat = {
+    /**
+     * 启动 SSE 流式聊天（旧版本 - 用于内容评估）
+     * 调用 Go 后端的 /api/chat/stream
+     *
+     * @deprecated 使用 chat.taskChat() 替代
+     * @param {number} taskId - 任务 ID
+     * @param {string} message - 用户消息
+     * @param {function} onEvent - 事件回调函数
+     * @param {object} configParams - 配置参数 (temperature, topP, maxTokens 等)
+     * @returns {function} 取消连接的函数
+     */
+    stream: (taskId, message, onEvent, configParams = {}) => {
+      // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
+      const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
+
+      // 构建查询参数
+      const params = new URLSearchParams({
+        taskId: actualTaskId,
+        message: message,
+      })
+
+      // 添加配置参数（如果提供）
+      if (configParams.temperature !== undefined) {
+        params.append('temperature', configParams.temperature)
+      }
+      if (configParams.topP !== undefined) {
+        params.append('topP', configParams.topP)
+      }
+      if (configParams.maxTokens !== undefined) {
+        params.append('maxTokens', configParams.maxTokens)
+      }
+
+      const url = `${apiUrl}/api/chat/stream?${params.toString()}`
+
+      try {
+        const eventSource = new EventSource(url)
+
+        // 处理消息事件
+        eventSource.onmessage = (event) => {
+          try {
+            // 解析 SSE 数据（可能是 JSON）
+            const data = JSON.parse(event.data)
+            onEvent(data)
+
+            // 如果收到 stream_end，说明流正常完成，关闭连接
+            if (data.status === 'stream_end') {
+              eventSource.close()
+            }
+          } catch (e) {
+            // 如果不是 JSON，当作纯文本处理
+            onEvent({ text: event.data })
+          }
+        }
+
+        // 处理错误事件
+        eventSource.onerror = (error) => {
+          console.error('[API SSE] 连接错误:', error)
+          eventSource.close()
+          onEvent({ status: 'error', error: '连接中断' })
+        }
+
+        // 返回取消函数
+        return () => {
+          eventSource.close()
+        }
+      } catch (error) {
+        console.error('[API SSE] 初始化失败:', error)
+        onEvent({ status: 'error', error: error.message })
+        return () => {} // 返回空函数
+      }
+    },
+
+    /**
+     * 任务特定的聊天 - Agent 调优与咨询（新版本）
+     * 调用 Go 后端的 POST /api/tasks/{task_id}/chat
+     *
+     * @param {string} taskId - 任务 ID (可以是 "source-123" 或 "123" 格式)
+     * @param {string} message - 用户的问题或指令
+     * @param {function} onEvent - SSE 事件回调
+     * @returns {function} 取消连接的函数
+     */
+    taskChat: (taskId, message, onEvent) => {
+      // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
+      const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
+
+      const url = `${apiUrl}/api/tasks/${actualTaskId}/chat`
+
+      try {
+        // 发送 POST 请求
+        const requestBody = JSON.stringify({
+          message: message,
+        })
+
+        const response = fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: requestBody,
+        })
+
+        // 处理流式响应
+        response.then(res => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`)
+          }
+
+          const reader = res.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+
+          const processStream = async () => {
+            try {
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, { stream: true })
+
+                // 按行处理 SSE 格式
+                const lines = buffer.split('\n')
+                buffer = lines.pop() // 保留未完成的行
+
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const data = line.slice(6) // 移除 "data: " 前缀
+                    try {
+                      const event = JSON.parse(data)
+                      onEvent(event)
+                    } catch (e) {
+                      onEvent({ text: data })
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('[API Task Chat] Stream error:', error)
+              onEvent({ status: 'error', error: error.message })
+            }
+          }
+
+          processStream()
+        }).catch(error => {
+          console.error('[API Task Chat] Request error:', error)
+          onEvent({ status: 'error', error: error.message })
+        })
+
+        // 返回取消函数
+        return () => {
+          // 无法取消 fetch，但返回空函数以兼容接口
+        }
+      } catch (error) {
+        console.error('[API Task Chat] Initialization error:', error)
+        onEvent({ status: 'error', error: error.message })
+        return () => {}
+      }
+    },
+
+    /**
+     * 另一种 stream 实现，基于 fetch + ReadableStream (备用)
+     * 某些浏览器或网络配置下 EventSource 可能不可用
+     */
+    streamWithFetch: async (taskId, message, onChunk, configParams = {}) => {
+      const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
+
+      const params = new URLSearchParams({
+        taskId: actualTaskId,
+        message: message,
+      })
+
+      if (configParams.temperature !== undefined) {
+        params.append('temperature', configParams.temperature)
+      }
+      if (configParams.topP !== undefined) {
+        params.append('topP', configParams.topP)
+      }
+      if (configParams.maxTokens !== undefined) {
+        params.append('maxTokens', configParams.maxTokens)
+      }
+
+      const url = `${apiUrl}/api/chat/stream?${params.toString()}`
+
+      try {
+        const response = await fetch(url)
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+
+        // 读取流
+        while (true) {
+          const { done, value } = await reader.read()
+
+          if (done) break
+
+          buffer += decoder.decode(value, { stream: true })
+
+          // 按行处理（SSE 格式）
+          const lines = buffer.split('\n')
+          buffer = lines.pop() // 保留未完成的行
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6) // 移除 "data: " 前缀
+              try {
+                onChunk(JSON.parse(data))
+              } catch (e) {
+                onChunk({ text: data })
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[API SSE Fetch] 失败:', error)
+        onChunk({ status: 'error', error: error.message })
+      }
+    },
+  }
+
   // ==================== 认证相关 API ====================
 
   const auth = {
@@ -438,6 +677,7 @@ export const useAPI = () => {
     // API 分组
     tasks,
     messages,
+    chat,
     auth,
   }
 }

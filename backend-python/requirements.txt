@@ -6,6 +6,10 @@ redis==5.0.1
 python-dotenv==1.0.0
 PyYAML==6.0.1
 
+# FastAPI Web Framework
+fastapi==0.104.1
+uvicorn==0.24.0
+
 # LangGraph 生产级 AI Agent 框架
 langchain-core>=0.1.0
 langchain>=0.1.0

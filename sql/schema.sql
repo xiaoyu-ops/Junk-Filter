@@ -91,6 +91,22 @@ CREATE TABLE IF NOT EXISTS status_log (
 CREATE INDEX idx_status_log_task_id ON status_log(task_id);
 CREATE INDEX idx_status_log_logged_at ON status_log(logged_at DESC);
 
+-- 表 6: messages (聊天消息 - Phase 5 新增)
+CREATE TABLE IF NOT EXISTS messages (
+  id BIGSERIAL PRIMARY KEY,
+  task_id BIGINT REFERENCES sources(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL,  -- 'user', 'ai'
+  type VARCHAR(20) DEFAULT 'text',  -- 'text', 'execution'
+  content TEXT NOT NULL,
+  metadata JSONB,  -- 存储额外信息如 execution 结果
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_messages_task_id ON messages(task_id);
+CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
+CREATE INDEX idx_messages_role ON messages(role);
+
 -- Demo 初始数据：添加几个测试源
 INSERT INTO sources (url, author_name, priority, enabled) VALUES
   ('https://feeds.arstechnica.com/arstechnica/index', 'Ars Technica', 8, TRUE),
@@ -99,5 +115,5 @@ INSERT INTO sources (url, author_name, priority, enabled) VALUES
 ON CONFLICT (url) DO NOTHING;
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO junkfilter;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO junkfilter;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO truesignal;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO truesignal;
