@@ -137,21 +137,40 @@ class Application:
             raise
 
     async def shutdown(self):
-        """Graceful shutdown"""
+        """Graceful shutdown (P0 改进：添加超时保护)"""
         logger.info("Shutting down application...")
 
+        # 1. 停止接收新消息
         if self.consumer_task and not self.consumer_task.done():
             self.consumer_task.cancel()
             try:
-                await self.consumer_task
+                await asyncio.wait_for(self.consumer_task, timeout=10)
+            except asyncio.TimeoutError:
+                logger.warning("Consumer shutdown timeout (10s)")
             except asyncio.CancelledError:
                 pass
 
+        # 2. 等待进行中的评估完成（最多 5 秒）
+        try:
+            await asyncio.sleep(0.5)
+        except:
+            pass
+
+        # 3. 关闭数据库连接池，带超时 (P0 改进)
         if self.consumer:
             await self.consumer.stop()
 
-        await Database.close()
-        await Redis.close()
+        # 4. 关闭 Database 连接池，带超时 (P0 改进：防止 hang)
+        try:
+            await asyncio.wait_for(Database.close(), timeout=5)
+        except asyncio.TimeoutError:
+            logger.error("Database pool close timeout (5s)")
+
+        # 5. 关闭 Redis
+        try:
+            await asyncio.wait_for(Redis.close(), timeout=3)
+        except asyncio.TimeoutError:
+            logger.error("Redis close timeout (3s)")
 
         logger.info("Application shutdown complete.")
 

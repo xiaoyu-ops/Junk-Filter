@@ -24,6 +24,8 @@
 - **网络修复**: [PHASE5.3_NETWORK_FIX_AND_STARTUP.md](PHASE5.3_NETWORK_FIX_AND_STARTUP.md) - 网络和启动脚本修复
 
 ### 📋 系统架构与设计
+- **CTO 级快速开始** ⭐ **新增**: [CTO_AUDIT_QUICK_START.md](CTO_AUDIT_QUICK_START.md) - 5 分钟速读（30 秒摘要、快速修复清单）
+- **CTO 级深度审计** ⭐ **新增**: [CTO_ARCHITECTURE_AUDIT.md](CTO_ARCHITECTURE_AUDIT.md) - 完整的 CTO 级审计、瓶颈分析、冲刺计划
 - **后端分析**: [BACKEND_ANALYSIS_REPORT.md](BACKEND_ANALYSIS_REPORT.md) - Go 和 Python 后端详细分析
 - **兼容性报告**: [FRONTEND_BACKEND_COMPATIBILITY.md](FRONTEND_BACKEND_COMPATIBILITY.md) - 前后端兼容性验证
 - **适配层实现**: [ADAPTER_LAYER_IMPLEMENTATION.md](ADAPTER_LAYER_IMPLEMENTATION.md) - 前端适配层技术细节
@@ -59,9 +61,15 @@
 3. 快速参考 [LLM_ENV_QUICK_REFERENCE.md](guides/LLM_ENV_QUICK_REFERENCE.md)
 
 ### 我想理解系统架构
-1. 阅读 [BACKEND_ANALYSIS_REPORT.md](BACKEND_ANALYSIS_REPORT.md) - 了解后端
-2. 阅读 [FRONTEND_BACKEND_COMPATIBILITY.md](FRONTEND_BACKEND_COMPATIBILITY.md) - 了解集成
-3. 阅读 [ADAPTER_LAYER_IMPLEMENTATION.md](ADAPTER_LAYER_IMPLEMENTATION.md) - 了解适配层
+1. **先读深度审计**: [CTO_ARCHITECTURE_AUDIT.md](CTO_ARCHITECTURE_AUDIT.md) - CTO 级架构分析、瓶颈识别、优化方案
+2. 再读系统设计: [BACKEND_ANALYSIS_REPORT.md](BACKEND_ANALYSIS_REPORT.md) - 了解后端实现
+3. 了解前后端集成: [FRONTEND_BACKEND_COMPATIBILITY.md](FRONTEND_BACKEND_COMPATIBILITY.md) - 前后端兼容性
+4. 了解适配层: [ADAPTER_LAYER_IMPLEMENTATION.md](ADAPTER_LAYER_IMPLEMENTATION.md) - 适配层细节
+
+### 我是架构师/技术负责人，要评估项目质量
+1. **必读**: [CTO_ARCHITECTURE_AUDIT.md](CTO_ARCHITECTURE_AUDIT.md) - 风险、瓶颈、优先级排序
+2. 参考: [PHASE5_3_COMPLETION_REPORT.md](guides/PHASE5_3_COMPLETION_REPORT.md) - 项目完成度
+3. 了解: [BACKEND_ANALYSIS_REPORT.md](BACKEND_ANALYSIS_REPORT.md) - 技术细节
 
 ### 我需要验证系统功能
 1. 查看 [SMOKE_TEST_QUICK_START.md](guides/SMOKE_TEST_QUICK_START.md)
@@ -79,6 +87,23 @@
 
 ### Phase 1 - 基础设施
 - [PHASE1_COMPLETION_REPORT.md](PHASE1_COMPLETION_REPORT.md)
+
+### Phase 1 (Go 后端) - 模块化重构 ⭐ **新增**
+- **完整导航**: [phase1-go-refactoring/INDEX.md](phase1-go-refactoring/INDEX.md) - 所有文档的汇总导航
+- **项目总结**: [phase1-go-refactoring/COMPLETION_SUMMARY.md](phase1-go-refactoring/COMPLETION_SUMMARY.md) - Phase 1 重构成果总结
+- **架构设计**: [phase1-go-refactoring/REFACTORING_GUIDE.md](phase1-go-refactoring/REFACTORING_GUIDE.md) - 设计原则与模块说明
+- **代码示例**: [phase1-go-refactoring/CODE_EXAMPLES.md](phase1-go-refactoring/CODE_EXAMPLES.md) - 使用示例与最佳实践
+- **单元测试**: [phase1-go-refactoring/UNIT_TEST_REPORT.md](phase1-go-refactoring/UNIT_TEST_REPORT.md) - 15 个单元测试报告（100% 通过）
+- **P0 优化**: [phase1-go-refactoring/P0_FIX_EXECUTION_SUMMARY.md](phase1-go-refactoring/P0_FIX_EXECUTION_SUMMARY.md) - 5 个 P0 性能优化
+- **完成报告**: [phase1-go-refactoring/GO_REFACTORING_COMPLETION_REPORT.md](phase1-go-refactoring/GO_REFACTORING_COMPLETION_REPORT.md) - 项目完成度统计
+- **集成状态**: [phase1-go-refactoring/INTEGRATION_STATUS.md](phase1-go-refactoring/INTEGRATION_STATUS.md) - 当前状态与后续计划
+
+### Phase 2.1 (Go 后端) - Config 集成测试 ⭐ **新增**
+- **测试报告**: [phase1-go-refactoring/PHASE2_CONFIG_INTEGRATION_TEST_REPORT.md](phase1-go-refactoring/PHASE2_CONFIG_INTEGRATION_TEST_REPORT.md) - 13 个集成测试（100% 通过）
+  - 环境变量优先级验证
+  - P0 优化值完整验证
+  - 类型转换与异常处理
+  - 真实场景测试（无 Mock）
 
 ### Phase 2 - 核心流程
 - [PHASE2_IMPLEMENTATION_SUMMARY.md](guides/PHASE2_IMPLEMENTATION_SUMMARY.md)
@@ -132,6 +157,26 @@
 
 ## 🚀 最新完成内容 (2026-02-28)
 
+✅ **Go 后端模块化重构完成 (Phase 1)** ⭐ **新增**
+- 4 个核心模块 + 3 个测试模块（总计 1340 行代码）
+- 15 个单元测试全部通过（100%）
+- 5 个 P0 性能优化值已应用
+- 完整的 DI 和 Factory 模式实现
+- 查看: [phase1-go-refactoring/](phase1-go-refactoring/)
+
+✅ **Go Config 集成测试完成 (Phase 2.1)** ⭐ **新增**
+- 13 个集成测试全部通过（100%，0.06s）
+- 环境变量覆盖优先级验证完成
+- P0 优化值（MaxOpenConns=50, MaxIdleConns=10, WorkerCount=20, Timeout=30s, FetchInterval=30m）全部验证
+- 真实场景测试，无 Mock，完整的环境隔离
+- 查看: [phase1-go-refactoring/PHASE2_CONFIG_INTEGRATION_TEST_REPORT.md](phase1-go-refactoring/PHASE2_CONFIG_INTEGRATION_TEST_REPORT.md)
+
+✅ **文档整理与规范化** ⭐ **新增**
+- 所有 Phase 1 文档汇总到 `description/phase1-go-refactoring/`（9 份文档）
+- 历史脚本归档到 `description/archive/scripts/`
+- 项目根目录清理：只保留 CLAUDE.md、start-all、verify-day1
+- 创建新的统一验证脚本：verify-day1.bat/sh
+
 ✅ **LLM 中转站集成完成**
 - 支持自定义 base_url（如 elysiver.h-e.top）
 - 支持自定义模型选择（如 gpt-5.2）
@@ -141,10 +186,6 @@
 ✅ **项目名称更新**
 - 从 TrueSignal 改为 Junk Filter
 - 所有代码和文档已更新
-
-✅ **文档整理完成**
-- .gitignore 更新：添加了临时测试文件
-- description 文件夹文档分类汇总
 
 ---
 

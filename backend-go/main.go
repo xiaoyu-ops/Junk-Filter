@@ -27,6 +27,8 @@ type Config struct {
 		Password string `yaml:"password"`
 		DBName   string `yaml:"dbname"`
 		SSLMode  string `yaml:"sslmode"`
+		MaxOpenConns int `yaml:"max_open_conns"`  // ← P0: 新增支持
+		MaxIdleConns int `yaml:"max_idle_conns"`  // ← P0: 新增支持
 	} `yaml:"database"`
 	Redis struct {
 		Host string `yaml:"host"`
@@ -210,9 +212,20 @@ func initDatabase(cfg *Config) (*sql.DB, error) {
 		return nil, err
 	}
 
-	// 配置连接池
-	db.SetMaxOpenConns(20)
-	db.SetMaxIdleConns(5)
+	// 配置连接池 (P0 优化)
+	maxOpenConns := cfg.Database.MaxOpenConns
+	if maxOpenConns <= 0 {
+		maxOpenConns = 50  // 默认值
+	}
+	maxIdleConns := cfg.Database.MaxIdleConns
+	if maxIdleConns <= 0 {
+		maxIdleConns = 10  // 默认值
+	}
+
+	db.SetMaxOpenConns(maxOpenConns)
+	db.SetMaxIdleConns(maxIdleConns)
+
+	log.Printf("✓ Database pool configured: max_open=%d, max_idle=%d", maxOpenConns, maxIdleConns)
 
 	return db, nil
 }

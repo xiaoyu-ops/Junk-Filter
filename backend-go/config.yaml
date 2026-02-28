@@ -1,7 +1,7 @@
-# TrueSignal Backend (Go)
+# Junk Filter Backend (Go)
+# 最后更新: 2026-02-28 (P0 性能优化)
 
-## 配置
-
+## 数据库配置
 database:
   host: localhost
   port: 5432
@@ -9,19 +9,23 @@ database:
   password: truesignal123
   dbname: truesignal
   sslmode: disable
+  max_open_conns: 50        # ← P0: 从 20 改为 50 (支持 1K+ 源)
+  max_idle_conns: 10        # ← P0: 新增 (防止连接泄漏)
 
+## Redis 配置
 redis:
   host: localhost
   port: 6379
   db: 0
 
+## HTTP 服务配置
 server:
   port: 8080
 
-# RSS Ingestion 配置
+## RSS 抓取配置 (P0 性能优化)
 ingestion:
-  worker_count: 5
-  timeout: 10s
+  worker_count: 20          # ← P0: 从 5 改为 20 (支持更多并发抓取)
+  timeout: 30s              # ← P0: 从 10s 改为 30s (允许更慢的源)
   retry_max: 3
-  fetch_interval: 1h
+  fetch_interval: 30m       # ← P0: 从 1h 改为 30m (更频繁的抓取)
 

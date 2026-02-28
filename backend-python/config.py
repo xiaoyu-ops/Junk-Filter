@@ -35,23 +35,24 @@ class Settings(BaseSettings):
         case_sensitive=False
     )
 
-    # 数据库配置
+    # 数据库配置 (P0 优化)
     db_host: str = "localhost"
     db_port: int = 5432
     db_user: str = "truesignal"
     db_password: str = "truesignal123"
     db_name: str = "truesignal"
-    db_pool_min_size: int = 5
-    db_pool_max_size: int = 20
+    db_pool_min_size: int = 10
+    db_pool_max_size: int = 100  # ← P0: 从 20 改为 100 (支持更多并发)
 
     # Redis 配置
     redis_url: str = "redis://localhost:6379/0"
     redis_pool_size: int = 10
 
-    # 评估配置
+    # 评估配置 (P0 优化)
     evaluation_timeout: int = 30
     max_retries: int = 3
-    batch_size: int = 10
+    batch_size: int = 50  # ← P0: 从 10 改为 50 (批量处理)
+    llm_max_workers: int = 50  # ← P0: 新增，ThreadPoolExecutor 线程数
 
     # LLM 配置 (OpenAI)
     llm_provider: str = "openai"

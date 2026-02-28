@@ -39,6 +39,86 @@ services:
       timeout: 5s
       retries: 5
 
+  # P0: Python 评估器 - 第 1 个 (消费者 evaluator-1)
+  python-evaluator-1:
+    build: ./backend-python
+    container_name: junkfilter-python-1
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: truesignal
+      DB_PASSWORD: truesignal123
+      DB_NAME: truesignal
+      REDIS_URL: redis://redis:6379/0
+      WORKER_ID: 1
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - junkfilter-network
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # P0: Python 评估器 - 第 2 个 (消费者 evaluator-2)
+  python-evaluator-2:
+    build: ./backend-python
+    container_name: junkfilter-python-2
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: truesignal
+      DB_PASSWORD: truesignal123
+      DB_NAME: truesignal
+      REDIS_URL: redis://redis:6379/0
+      WORKER_ID: 2
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - junkfilter-network
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # P0: Python 评估器 - 第 3 个 (消费者 evaluator-3)
+  python-evaluator-3:
+    build: ./backend-python
+    container_name: junkfilter-python-3
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: truesignal
+      DB_PASSWORD: truesignal123
+      DB_NAME: truesignal
+      REDIS_URL: redis://redis:6379/0
+      WORKER_ID: 3
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - junkfilter-network
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:

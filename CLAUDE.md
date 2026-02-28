@@ -89,7 +89,7 @@ D:\TrueSignal\
 
 ## 项目概述
 
-**TrueSignal** 是一个智能信息聚合和价值评估系统，帮助用户从多个 RSS 源中筛选出高价值、高创新度、高深度的内容。
+**Junk Filter** 是一个智能信息聚合和价值评估系统，帮助用户从多个 RSS 源中筛选出高价值、高创新度、高深度的内容。
 
 **技术栈：**
 - **后端（Go）：** 高并发 RSS 抓取、API 网关
@@ -634,20 +634,181 @@ npm run dev
 
 ---
 
+## Phase 5.3 - Agent LLM 集成完成 ✅ (2026-02-28)
+
+### 项目进度更新
+
+**当前阶段**: Phase 5.3 - Agent LLM 集成
+**状态**: ✅ **完全完成**
+**日期**: 2026-02-28
+
+### 最新完成工作
+
+#### 1. LLM 中转站集成 ✅
+- ✅ 支持自定义 `base_url` 参数（如 elysiver.h-e.top/v1）
+- ✅ 支持自定义模型选择（如 gpt-5.2）
+- ✅ 环境变量冲突问题彻底解决
+- ✅ Agent 现在返回真实 AI 生成的回复
+
+**关键文件修改**:
+- `backend-python/config.py` - 实现强制覆盖 LLM 相关环境变量的机制
+- `backend-python/api_server.py` - 添加 base_url 参数支持
+- `.env` - 完整的 LLM 配置参数
+
+**技术细节**:
+```python
+# config.py 中的强制覆盖逻辑
+CRITICAL_KEYS = ["LLM_MODEL_ID", "OPENAI_API_KEY", "LLM_BASE_URL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS"]
+# 这些关键的 LLM 配置会强制使用 .env 文件的值，覆盖 Conda 环境变量
+```
+
+#### 2. 环境变量诊断 ✅
+- 识别并解决 Conda 全局环境变量与 .env 文件的冲突
+- 创建详细诊断文档 `description/guides/RELAY_API_ENV_ISSUE_DIAGNOSIS.md`
+- 创建快速参考卡 `description/guides/LLM_ENV_QUICK_REFERENCE.md`
+
+**问题原因**:
+- Conda 全局设置了 `LLM_MODEL_ID=gpt-4`
+- Python 启动时环境变量已被 Conda 初始化
+- 原 config.py 使用 `if key not in os.environ` 导致无法覆盖
+
+#### 3. 项目名称统一 ✅
+- 从 `TrueSignal` 更新为 `Junk Filter`
+- 更新了所有相关代码文件中的项目标识
+- 更新了启动日志和文档
+
+**更新范围**:
+- `backend-python/main.py` - 启动信息
+- `backend-python/api_server.py` - 系统提示词
+- `backend-python/agents/__init__.py` - 模块文档
+- 所有相关文档和说明
+
+#### 4. 文档整理与归档 ✅
+- 创建 `description/MASTER_INDEX.md` - 完整导航中心
+- 创建 `description/archive/` 文件夹
+- 归档 31 份历史开发文档（Phase 1-5 规划、Task 1-4 实现）
+- 更新 `.gitignore` - 添加测试文件和 Python 缓存目录
+
+**新增文档结构**:
+```
+description/
+├── MASTER_INDEX.md           # 新增：完整导航指南
+├── guides/                   # 快速开始和配置
+├── archive/                  # 历史开发文档（31份）
+├── README.md                 # 项目概述
+└── ARCHIVE.md                # 归档指南
+```
+
+### 项目现状总结
+
+#### 系统完整性
+| 组件 | 状态 | 说明 |
+|------|------|------|
+| 后端（Go + Python） | ✅ | Docker 容器运行，Redis Stream 集成完成 |
+| 前端（Vue 3） | ✅ | Phase 3 完成，所有交互功能正常 |
+| LLM 集成 | ✅ | 支持中转站 API，Agent 返回真实回复 |
+| 文档系统 | ✅ | 分类整理，导航清晰，易于查阅 |
+| 环境配置 | ✅ | .env 配置完整，无冲突 |
+
+#### 核心功能
+- ✅ RSS 源管理和抓取（Go 后端）
+- ✅ 内容评估（Python Agent + LLM）
+- ✅ 任务分发和执行（前端交互）
+- ✅ 流式回复（Server-Sent Events）
+- ✅ AI 模型配置（自定义 base_url 和模型）
+
+### 快速启动指南
+
+#### 启动整个系统
+```bash
+# 方式 1: 使用启动脚本 (Windows)
+start-all.bat
+
+# 方式 2: 使用启动脚本 (Linux/Mac)
+./start-all.sh
+
+# 方式 3: 手动启动各组件
+# 终端 1: Docker 容器
+docker-compose up -d
+
+# 终端 2: Go 后端
+cd backend-go
+go run main.go
+
+# 终端 3: Python 评估服务
+cd backend-python
+python main.py
+
+# 终端 4: 前端
+cd frontend-vue
+npm run dev
+```
+
+#### 验证系统状态
+```bash
+# 1. 检查容器运行
+docker-compose ps
+
+# 2. 验证数据库连接
+docker exec truesignal-db psql -U truesignal -d truesignal -c "SELECT version();"
+
+# 3. 验证 Redis 连接
+docker exec truesignal-redis redis-cli ping
+
+# 4. 访问前端应用
+http://localhost:5173
+
+# 5. 检查 Agent 功能
+在前端与 Agent 聊天，验证 AI 回复
+```
+
+### 后续工作方向
+
+#### 可选增强功能
+1. **Config.vue 增强**（前端优化）
+   - RSS 订阅源管理界面（见 `description/PHASE3_* 规划文档`）
+   - AI 模型参数微调面板
+   - 参考计划文件: 计划文件已在 C:\Users\XIAOYU\.claude\plans\ 中
+
+2. **后端功能完善**
+   - Go 后端 RSS 抓取流程优化
+   - Python Agent 评估逻辑增强
+   - 数据库查询优化
+
+3. **系统集成和测试**
+   - 端到端烟雾测试（SMOKE_TEST 脚本）
+   - 性能基准测试
+   - 压力测试和可靠性验证
+
+### 关键文件索引
+
+| 文件 | 用途 | 状态 |
+|------|------|------|
+| `CLAUDE.md` | 项目指导文档 | ✅ 最新 |
+| `MASTER_INDEX.md` | 文档导航中心 | ✅ 新建 |
+| `backend-python/config.py` | LLM 配置管理 | ✅ 已优化 |
+| `backend-python/api_server.py` | Agent API 服务 | ✅ 已优化 |
+| `.env` | 环境变量配置 | ✅ 完整 |
+| `.gitignore` | Git 忽略规则 | ✅ 已更新 |
+| `description/guides/` | 快速开始指南 | ✅ 完整 |
+| `description/archive/` | 历史文档存档 | ✅ 已整理 |
+
+---
+
 ## 快速链接（已更新）
 
-- 📚 **完整修复归档** → `description/PHASE3_FIX_COMPLETE_ARCHIVE.md`
-- 🔍 **问题深度分析** → `description/STREAM_STATE_MANAGEMENT_ANALYSIS.md`
-- 📖 **现状汇报** → `description/PHASE3_CURRENT_STATUS_REPORT.md`
-- 📦 **历史文档** → `description/ARCHIVE.md`
-- 🚀 **前端启动** → `start-phase3.bat/sh`
-- ✅ **快速测试** → `test-sse.js`
+- 📚 **文档导航中心** → `description/MASTER_INDEX.md` ⭐ 新增
+- 📖 **项目概述** → `description/README.md`
+- 🔧 **完整索引** → `description/INDEX.md`
+- 📦 **历史文档** → `description/ARCHIVE.md` 和 `description/archive/`
+- 🚀 **启动脚本** → `start-all.bat/sh`
+- ✅ **验证环境** → `verify-day1.bat/sh`
 
 ---
 
 ## 快速链接
 
-- 📚 **文档导航** → `description/README.md` 或 `description/INDEX.md`
+- 📚 **文档导航** → `description/README.md` 或 `description/MASTER_INDEX.md`
 - 📦 **历史文档** → `description/ARCHIVE.md`
 - 🚀 **前端启动** → 在 `frontend-vue` 目录执行 `npm run dev`
 - 🔧 **Mock 服务器** → 在 `backend-mock` 目录执行 `node server.js`
