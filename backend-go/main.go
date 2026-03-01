@@ -318,7 +318,7 @@ func startServer(port int) {
 
 	// 注册 handlers
 	sourceHandler := handlers.NewSourceHandler(appCtx.SourceRepo, appCtx.RSSService)
-	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo)
+	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo, appCtx.DB)
 	evaluationHandler := handlers.NewEvaluationHandler(appCtx.EvaluationRepo)
 	messageHandler := handlers.NewMessageHandler(appCtx.MessageRepo)
 	chatHandler := handlers.NewChatHandler(appCtx.MessageRepo, appCtx.Config.PythonAPI.URL)

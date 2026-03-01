@@ -15,16 +15,19 @@ import (
 type ContentHandler struct {
 	contentRepo     *repositories.ContentRepository
 	evaluationRepo  *repositories.EvaluationRepository
+	db              *sql.DB
 }
 
 // NewContentHandler creates a new content handler
 func NewContentHandler(
 	contentRepo *repositories.ContentRepository,
 	evaluationRepo *repositories.EvaluationRepository,
+	db *sql.DB,
 ) *ContentHandler {
 	return &ContentHandler{
 		contentRepo:    contentRepo,
 		evaluationRepo: evaluationRepo,
+		db:             db,
 	}
 }
 
@@ -54,19 +57,6 @@ func (ch *ContentHandler) GetContent(c *gin.Context) {
 
 // GetContentStats 获取内容统计信息（RSS 抓取进度）
 func (ch *ContentHandler) GetContentStats(c *gin.Context) {
-	// 从上下文获取数据库连接
-	dbInterface, exists := c.Get("db")
-	if !exists {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "database not available"})
-		return
-	}
-
-	db, ok := dbInterface.(*sql.DB)
-	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid database connection"})
-		return
-	}
-
 	// 查询各状态的数量
 	type StatsResult struct {
 		Status string `db:"status"`
@@ -79,7 +69,7 @@ func (ch *ContentHandler) GetContentStats(c *gin.Context) {
 		GROUP BY status
 	`
 
-	rows, err := db.Query(query)
+	rows, err := ch.db.QueryContext(c.Request.Context(), query)
 	if err != nil {
 		log.Printf("Error querying content stats: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get stats"})

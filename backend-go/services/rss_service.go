@@ -53,15 +53,25 @@ func NewRSSService(
 }
 
 // Start begins the RSS fetching service
+// interval 现在作为最小轮询间隔（用于检查源是否需要更新）
+// 实际的更新频率由每个 RSS 源的 fetch_interval_seconds 决定
 func (rs *RSSService) Start(ctx context.Context, interval time.Duration) error {
 	// Initialize bloom filter
 	if err := rs.dedupService.InitializeBloomFilter(ctx); err != nil {
 		log.Printf("Warning: Failed to initialize bloom filter: %v", err)
 	}
 
-	rs.ticker = time.NewTicker(interval)
+	// 使用更小的轮询间隔（30秒），以支持更频繁的更新需求
+	// 这样即使用户设置 30 分钟更新，也能及时响应
+	minInterval := 30 * time.Second
+	if interval < minInterval {
+		minInterval = interval
+	}
+
+	rs.ticker = time.NewTicker(minInterval)
 	rs.wg.Add(1)
 	go rs.run(ctx)
+	log.Printf("✓ RSS Service started with poll interval: %v (configured: %v)", minInterval, interval)
 	return nil
 }
 

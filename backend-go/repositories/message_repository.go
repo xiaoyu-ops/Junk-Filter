@@ -22,14 +22,26 @@ func NewMessageRepository(db *sql.DB) *MessageRepository {
 
 // Create inserts a new message and returns its ID
 func (mr *MessageRepository) Create(ctx context.Context, msg *models.Message) (int64, error) {
+	// Set message_type based on role if not explicitly set
+	messageType := msg.MessageType
+	if messageType == "" {
+		if msg.Role == "user" {
+			messageType = "user_query"
+		} else if msg.Role == "ai" {
+			messageType = "ai_reply"
+		} else {
+			messageType = "system_notification"
+		}
+	}
+
 	query := `
-		INSERT INTO messages (task_id, role, type, content, metadata, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+		INSERT INTO messages (task_id, role, type, content, metadata, message_type, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
 		RETURNING id
 	`
 
 	var id int64
-	err := mr.db.QueryRowContext(ctx, query, msg.TaskID, msg.Role, msg.Type, msg.Content, msg.Metadata).Scan(&id)
+	err := mr.db.QueryRowContext(ctx, query, msg.TaskID, msg.Role, msg.Type, msg.Content, msg.Metadata, messageType).Scan(&id)
 	if err != nil {
 		log.Printf("Error creating message: %v", err)
 		return 0, fmt.Errorf("failed to create message: %w", err)
@@ -41,7 +53,7 @@ func (mr *MessageRepository) Create(ctx context.Context, msg *models.Message) (i
 // GetByTaskID retrieves all messages for a specific task
 func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]models.Message, error) {
 	query := `
-		SELECT id, task_id, role, type, content, metadata, created_at, updated_at
+		SELECT id, task_id, role, type, content, metadata, message_type, created_at, updated_at
 		FROM messages
 		WHERE task_id = $1
 		ORDER BY created_at ASC
@@ -59,6 +71,7 @@ func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]m
 	for rows.Next() {
 		var msg models.Message
 		var createdAt, updatedAt time.Time
+		var messageType sql.NullString
 
 		err := rows.Scan(
 			&msg.ID,
@@ -67,6 +80,7 @@ func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]m
 			&msg.Type,
 			&msg.Content,
 			&msg.Metadata,
+			&messageType,
 			&createdAt,
 			&updatedAt,
 		)
@@ -77,6 +91,9 @@ func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]m
 
 		msg.CreatedAt = createdAt
 		msg.UpdatedAt = updatedAt
+		if messageType.Valid {
+			msg.MessageType = messageType.String
+		}
 		messages = append(messages, msg)
 	}
 
@@ -91,13 +108,14 @@ func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]m
 // GetByID retrieves a single message by ID
 func (mr *MessageRepository) GetByID(ctx context.Context, id int64) (*models.Message, error) {
 	query := `
-		SELECT id, task_id, role, type, content, metadata, created_at, updated_at
+		SELECT id, task_id, role, type, content, metadata, message_type, created_at, updated_at
 		FROM messages
 		WHERE id = $1
 	`
 
 	msg := &models.Message{}
 	var createdAt, updatedAt time.Time
+	var messageType sql.NullString
 
 	err := mr.db.QueryRowContext(ctx, query, id).Scan(
 		&msg.ID,
@@ -106,6 +124,7 @@ func (mr *MessageRepository) GetByID(ctx context.Context, id int64) (*models.Mes
 		&msg.Type,
 		&msg.Content,
 		&msg.Metadata,
+		&messageType,
 		&createdAt,
 		&updatedAt,
 	)
@@ -120,6 +139,9 @@ func (mr *MessageRepository) GetByID(ctx context.Context, id int64) (*models.Mes
 
 	msg.CreatedAt = createdAt
 	msg.UpdatedAt = updatedAt
+	if messageType.Valid {
+		msg.MessageType = messageType.String
+	}
 
 	return msg, nil
 }

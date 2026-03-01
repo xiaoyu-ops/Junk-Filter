@@ -279,52 +279,17 @@ export const useConfigStore = defineStore('config', () => {
         throw new Error(errorData.error || `HTTP ${response.status}`)
       }
 
-      // Go 后端已触发同步，现在监听日志更新
-      // 这里可以选择：
-      // 1. 轮询获取日志 (polling)
-      // 2. 使用 SSE 流式获取日志 (streaming)
+      // Go 后端已触发同步，添加成功日志
+      source.lastSyncStatus = 'success'
+      source.lastSyncTime = new Date().toISOString()
+      source.syncLogs.unshift({
+        timestamp: new Date().toISOString(),
+        status: 'success',
+        itemsCount: 0,
+        message: '订阅源同步已触发',
+      })
 
-      // 暂时使用轮询方式，每 2 秒检查一次
-      let pollCount = 0
-      const maxPolls = 30 // 最多 60 秒
-
-      const pollLogs = async () => {
-        if (pollCount >= maxPolls) {
-          source.lastSyncStatus = 'success'
-          return
-        }
-
-        pollCount++
-
-        try {
-          const logsResponse = await fetch(`${API_BASE_URL}/sources/${id}/sync-logs?limit=5`)
-          if (logsResponse.ok) {
-            const logsData = await logsResponse.json()
-            if (logsData.logs && logsData.logs.length > 0) {
-              // 合并新日志
-              const existingIds = new Set(source.syncLogs.map(log => log.timestamp))
-              const newLogs = logsData.logs.filter(log => !existingIds.has(log.timestamp))
-              source.syncLogs.unshift(...newLogs)
-
-              // 检查是否完成
-              const latestLog = logsData.logs[0]
-              if (latestLog && latestLog.status === 'success') {
-                source.lastSyncStatus = 'success'
-                source.lastSyncTime = latestLog.timestamp
-                return
-              }
-            }
-          }
-
-          // 继续轮询
-          setTimeout(pollLogs, 2000)
-        } catch (err) {
-          console.warn('[Config Store] Failed to poll logs:', err)
-          setTimeout(pollLogs, 2000)
-        }
-      }
-
-      pollLogs()
+      console.log('[Config Store] Sync triggered for source:', id)
     } catch (error) {
       source.lastSyncStatus = 'error'
       source.syncLogs.unshift({
