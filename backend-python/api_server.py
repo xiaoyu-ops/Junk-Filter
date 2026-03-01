@@ -19,6 +19,8 @@ from pydantic import BaseModel
 from config import settings
 from main import Database, Redis
 from agents.content_evaluator import ContentEvaluationAgent
+from agents.task_analyzer import TaskAnalyzerAgent
+from models.ai_task import AITaskCreateRequest, AITaskCreateResponse
 
 # LLM Integration
 try:
@@ -165,6 +167,13 @@ except Exception:
 logger.info(f"✓ LLM Configuration: Model={model_id}, Base={api_base_hostname}")
 
 evaluator = ContentEvaluationAgent(
+    model=model_id,
+    api_key=api_key,
+    api_base=api_base
+)
+
+# 初始化任务分析器
+task_analyzer = TaskAnalyzerAgent(
     model=model_id,
     api_key=api_key,
     api_base=api_base
@@ -606,6 +615,112 @@ def extract_referenced_cards(reply: str) -> list:
     return card_ids
 
 
+
+
+# ======================== AI 任务创建接口 ========================
+
+@app.post("/api/task/ai-create", response_model=AITaskCreateResponse)
+async def create_task_with_ai(request: AITaskCreateRequest):
+    """
+    使用 AI 分析用户需求并推荐 RSS 源
+
+    这个端点由 Go 后端 /api/tasks/ai-create 调用，
+    使用真实 LLM（GPT-4/Claude 等）进行语义分析，
+    从可用的 RSS 源中推荐最合适的。
+
+    Args:
+        request: 包含用户消息、源列表和对话历史的请求
+
+    Returns:
+        AITaskCreateResponse: 包含 AI 回复、推荐源和待确认任务信息
+
+    Example:
+        {
+            "message": "我想监控 GitHub 上的 Python 项目",
+            "sources": [
+                {
+                    "id": 1,
+                    "url": "https://github.com/trending",
+                    "author_name": "GitHub Trends",
+                    "platform": "github",
+                    "priority": 8,
+                    "enabled": true
+                }
+            ],
+            "conversation_history": [
+                {"role": "user", "content": "我需要一个订阅源"},
+                {"role": "ai", "content": "好的，我来帮你找合适的源"}
+            ]
+        }
+
+    Response:
+        {
+            "reply": "我为你找到了GitHub Trends...",
+            "pending_task": {
+                "id": "source-1",
+                "title": "监控 GitHub Python 项目",
+                "source_name": "GitHub Trends",
+                "priority": 8,
+                "description": null
+            },
+            "source_name": "GitHub Trends"
+        }
+    """
+    try:
+        logger.info(f"[AI Task Create] Analyzing: {request.message[:50]}...")
+
+        # 根据请求中的 LLM 配置创建新的分析器（或使用全局的）
+        analyzer = task_analyzer
+
+        # 如果请求中提供了有效的 LLM 配置，就创建一个新的分析器实例
+        # 注意：这里做了严格的验证，只有当 api_key 不为空且看起来有效时才使用
+        if (request.llm_config and
+            request.llm_config.get('api_key') and
+            len(str(request.llm_config.get('api_key', '')).strip()) > 0):
+            try:
+                llm_model = request.llm_config.get('model_name', model_id)
+                llm_api_key = request.llm_config.get('api_key', api_key)
+                llm_base_url = request.llm_config.get('base_url', api_base)
+
+                # 获取评估配置中的温度参数
+                temperature = 0.7
+                if request.eval_config and request.eval_config.get('temperature'):
+                    temperature = request.eval_config['temperature']
+
+                logger.info(f"[AI Task Create] Using request-provided LLM config: {llm_model} (base_url: {llm_base_url})")
+
+                # 创建临时分析器，使用请求中的配置
+                analyzer = TaskAnalyzerAgent(
+                    model=llm_model,
+                    api_key=llm_api_key,
+                    api_base=llm_base_url,
+                    temperature=temperature,
+                    max_tokens=2000
+                )
+            except Exception as e:
+                logger.warning(f"[AI Task Create] Failed to create analyzer with request config: {e}, falling back to default")
+                logger.info(f"[AI Task Create] Using global LLM config: {model_id}")
+                analyzer = task_analyzer
+        else:
+            # 前端没有提供有效的 API 密钥，使用全局配置
+            logger.info(f"[AI Task Create] No valid API key in request, using global config: {model_id}")
+
+        # 使用任务分析器进行 AI 分析
+        response = await analyzer.analyze(
+            message=request.message,
+            sources=request.sources,
+            conversation_history=request.conversation_history,
+        )
+
+        logger.info(f"✓ AI Task analysis completed: source={response.source_name}")
+        return response
+
+    except Exception as e:
+        logger.error(f"✗ AI Task analysis failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to analyze task: {str(e)}"
+        )
 
 
 @app.get("/api/chat/stream")

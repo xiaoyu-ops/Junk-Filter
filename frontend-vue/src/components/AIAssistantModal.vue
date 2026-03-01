@@ -134,10 +134,12 @@
 <script setup>
 import { ref } from 'vue'
 import { useTaskStore } from '@/stores/useTaskStore'
+import { useConfigStore } from '@/stores/useConfigStore'
 import { useAPI } from '@/composables/useAPI'
 import { useToast } from '@/composables/useToast'
 
 const taskStore = useTaskStore()
+const configStore = useConfigStore()
 const { chat: chatAPI } = useAPI()
 const { show: showToast } = useToast()
 
@@ -166,6 +168,19 @@ const pendingTask = ref({
 const handleSendMessage = async () => {
   if (!userInput.value.trim()) return
 
+  // 获取当前的 LLM 配置进行验证
+  const llmConfig = configStore.getLLMConfig()
+
+  // 检查是否配置了 API 密钥
+  if (!llmConfig.apiKey || llmConfig.apiKey.trim().length === 0) {
+    showToast('请先在配置中设置 API 密钥', 'error', 3000)
+    messages.value.push({
+      role: 'ai',
+      content: '⚠️ 请先配置 API 密钥。你可以：\n1. 在右侧配置面板中设置 API 密钥\n2. 或者使用支持的 OpenAI 中转站（如 elysiver.h-e.top）'
+    })
+    return
+  }
+
   // 添加用户消息
   messages.value.push({
     role: 'user',
@@ -177,11 +192,16 @@ const handleSendMessage = async () => {
   isWaitingForAI.value = true
 
   try {
+    // 获取评估配置
+    const evalConfig = configStore.getEvaluationConfig()
+
     // 调用 AI 接口处理任务创建对话
-    // 这里需要实现一个新的 API 端点
     const response = await chatAPI.createTaskWithAI(
       userMessage,
-      messages.value
+      messages.value,
+      null,  // sources（不需要预先传递，API 会从数据库获取）
+      llmConfig,
+      evalConfig
     )
 
     // 添加 AI 回复
@@ -197,9 +217,16 @@ const handleSendMessage = async () => {
     }
   } catch (error) {
     console.error('[AI Assistant] 错误:', error)
+    // 提供更详细的错误信息
+    let errorMessage = '抱歉，出现了错误。'
+    if (error.message && error.message.includes('401')) {
+      errorMessage = '❌ 认证失败：API 密钥无效。请检查你的密钥是否正确。'
+    } else if (error.message && error.message.includes('429')) {
+      errorMessage = '⏱️ 请求过于频繁，请稍后再试。'
+    }
     messages.value.push({
       role: 'ai',
-      content: '抱歉，出现了错误。请重新描述你的需求。'
+      content: errorMessage
     })
   } finally {
     isWaitingForAI.value = false
