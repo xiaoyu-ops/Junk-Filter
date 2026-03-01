@@ -660,6 +660,41 @@ export const useAPI = () => {
         onChunk({ status: 'error', error: error.message })
       }
     },
+
+    /**
+     * AI 任务创建助手 - 处理用户的自然语言需求
+     * 调用 Go 后端的 POST /api/tasks/ai-create
+     *
+     * @param {string} message - 用户的需求描述
+     * @param {array} conversationHistory - 对话历史
+     * @returns {Promise<object>} AI 的回复和任务建议
+     */
+    createTaskWithAI: async (message, conversationHistory = []) => {
+      const requestBody = {
+        message: message,
+        conversation_history: conversationHistory.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        }))
+      }
+
+      try {
+        const response = await request('/api/tasks/ai-create', {
+          baseUrl: apiUrl,
+          method: 'POST',
+          body: JSON.stringify(requestBody),
+        })
+
+        return {
+          reply: response.reply || '请继续描述你的需求',
+          pendingTask: response.pending_task || null,
+          sourceName: response.source_name || null
+        }
+      } catch (error) {
+        console.error('[API] AI 任务创建失败:', error)
+        throw error
+      }
+    },
   }
 
   // ==================== 认证相关 API ====================

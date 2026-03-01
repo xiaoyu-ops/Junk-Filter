@@ -328,6 +328,7 @@ func startServer(port int) {
 		appCtx.EvaluationRepo,
 		appCtx.Config.PythonAPI.URL,
 	)
+	aiTaskHandler := handlers.NewAITaskHandler(appCtx.SourceRepo, appCtx.Config.PythonAPI.URL)
 
 	// 注册路由
 	handlers.RegisterSourceRoutes(router, sourceHandler)
@@ -336,6 +337,7 @@ func startServer(port int) {
 	handlers.RegisterMessageRoutes(router, messageHandler)
 	handlers.RegisterChatRoutes(router, chatHandler)
 	handlers.RegisterTaskChatRoutes(router, taskChatHandler)
+	handlers.RegisterAITaskRoutes(router, aiTaskHandler)
 
 	// 健康检查端点
 	router.GET("/health", func(c *gin.Context) {

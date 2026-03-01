@@ -23,6 +23,9 @@ export const useTaskStore = defineStore('task', () => {
   // 模态框状态
   const isModalOpen = ref(false)
 
+  // AI 助手模态框状态
+  const isAIAssistantModalOpen = ref(false)
+
   // 创建任务的表单状态
   const taskForm = ref({
     name: '',
@@ -71,6 +74,18 @@ export const useTaskStore = defineStore('task', () => {
   // 关闭模态框
   const closeModal = () => {
     isModalOpen.value = false
+    resetForm()
+  }
+
+  // 打开 AI 助手模态框
+  const openAIAssistantModal = () => {
+    isAIAssistantModalOpen.value = true
+    resetForm()
+  }
+
+  // 关闭 AI 助手模态框
+  const closeAIAssistantModal = () => {
+    isAIAssistantModalOpen.value = false
     resetForm()
   }
 
@@ -330,6 +345,7 @@ export const useTaskStore = defineStore('task', () => {
     tasks,
     selectedTaskId,
     isModalOpen,
+    isAIAssistantModalOpen,
     taskForm,
     isCreating,
     isLoading,
@@ -348,6 +364,8 @@ export const useTaskStore = defineStore('task', () => {
     // Actions
     openModal,
     closeModal,
+    openAIAssistantModal,
+    closeAIAssistantModal,
     selectTask,
     resetForm,
     loadTasks,

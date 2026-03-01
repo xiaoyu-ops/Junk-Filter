@@ -11,6 +11,9 @@
 
     <!-- 创建任务模态框 -->
     <TaskModal />
+
+    <!-- AI 助手模态框 -->
+    <AIAssistantModal />
   </main>
 </template>
 
@@ -20,6 +23,7 @@ import { useTaskStore } from '@/stores/useTaskStore'
 import TaskSidebar from './TaskSidebar.vue'
 import TaskChat from './TaskChat.vue'
 import TaskModal from './TaskModal.vue'
+import AIAssistantModal from './AIAssistantModal.vue'
 
 const taskStore = useTaskStore()
 

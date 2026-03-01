@@ -6,10 +6,19 @@
     <!-- 添加任务按钮 -->
     <button
       @click="taskStore.openModal"
-      class="w-full py-3 mb-6 bg-white border border-gray-200 hover:bg-gray-50 dark:bg-gray-700 dark:border-transparent dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg flex items-center justify-center gap-2 transition-colors font-medium shadow-sm group"
+      class="w-full py-3 mb-3 bg-white border border-gray-200 hover:bg-gray-50 dark:bg-gray-700 dark:border-transparent dark:hover:bg-gray-600 text-gray-900 dark:text-white rounded-lg flex items-center justify-center gap-2 transition-colors font-medium shadow-sm group"
     >
       <span class="material-icons-outlined text-lg group-hover:text-primary dark:group-hover:text-white transition-colors">add_circle_outline</span>
       <span>添加任务</span>
+    </button>
+
+    <!-- AI 助手按钮 -->
+    <button
+      @click="handleOpenAIAssistant"
+      class="w-full py-3 mb-6 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/30 dark:to-cyan-900/30 border border-blue-200 dark:border-blue-700/50 hover:from-blue-100 hover:to-cyan-100 dark:hover:from-blue-900/50 dark:hover:to-cyan-900/50 text-blue-900 dark:text-blue-300 rounded-lg flex items-center justify-center gap-2 transition-colors font-medium shadow-sm group"
+    >
+      <span class="material-icons-outlined text-lg group-hover:scale-110 transition-transform">auto_awesome</span>
+      <span>AI 助手</span>
     </button>
 
     <!-- 任务列表加载状态 -->
@@ -159,6 +168,13 @@ const handleExecuteTask = async (taskId) => {
  */
 const handleOpenHistory = async (taskId) => {
   taskStore.openExecutionHistoryModal()
+}
+
+/**
+ * 打开 AI 助手对话
+ */
+const handleOpenAIAssistant = () => {
+  taskStore.openAIAssistantModal()
 }
 </script>
 

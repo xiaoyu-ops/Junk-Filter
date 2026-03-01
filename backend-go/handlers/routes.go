@@ -65,3 +65,9 @@ func RegisterTaskChatRoutes(router *gin.Engine, handler *TaskChatHandler) {
 	// POST /api/tasks/{id}/chat - New endpoint for task-specific chat
 	router.POST("/api/tasks/:id/chat", handler.HandleTaskChat)
 }
+
+// RegisterAITaskRoutes registers AI-powered task creation routes
+func RegisterAITaskRoutes(router *gin.Engine, handler *AITaskHandler) {
+	// POST /api/tasks/ai-create - AI-powered task creation endpoint
+	router.POST("/api/tasks/ai-create", handler.HandleCreateTaskWithAI)
+}
