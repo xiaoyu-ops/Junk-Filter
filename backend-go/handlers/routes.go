@@ -7,6 +7,8 @@ func RegisterSourceRoutes(router *gin.Engine, handler *SourceHandler) {
 	sources := router.Group("/api/sources")
 	{
 		sources.GET("", handler.ListSources)
+		sources.GET("/search", handler.SearchSources)  // ← 必须在 /:id 之前
+		sources.POST("/:id/fetch", handler.FetchSourceNow)  // ← 手动同步
 		sources.GET("/:id", handler.GetSource)
 		sources.POST("", handler.CreateSource)
 		sources.PUT("/:id", handler.UpdateSource)

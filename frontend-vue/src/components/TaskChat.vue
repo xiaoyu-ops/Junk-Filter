@@ -532,10 +532,30 @@ const handleSSEResponse = async (userInput) => {
   let referencedCards = []
 
   try {
-    // 启动新的任务聊天 API（而不是旧的 stream API）
+    // 获取当前 LLM 和评估配置
+    // 优先从 localStorage 读取，其次从 store 读取
+    const savedConfig = localStorage.getItem('config') ? JSON.parse(localStorage.getItem('config')) : {}
+
+    const llmConfig = {
+      modelName: savedConfig.modelName || configStore.modelName,
+      apiKey: savedConfig.apiKey || configStore.apiKey,
+      baseUrl: savedConfig.baseUrl || configStore.baseUrl,
+    }
+    const evalConfig = {
+      temperature: savedConfig.temperature || configStore.temperature,
+      topP: savedConfig.topP || configStore.topP,
+      maxTokens: savedConfig.maxTokens || configStore.maxTokens,
+    }
+
+    console.log('[Task Chat] Using LLM Config:', llmConfig)
+    console.log('[Task Chat] Using Eval Config:', evalConfig)
+
+    // 启动新的任务聊天 API（传递配置参数）
     closeSseConnection.value = chatAPI.taskChat(
       taskStore.selectedTaskId,
       userInput,
+      llmConfig,      // ← 传递 LLM 配置
+      evalConfig,     // ← 传递评估配置
       (eventData) => {
         console.log('[Task Chat Event]', eventData)
 

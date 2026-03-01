@@ -176,6 +176,7 @@
 <script setup>
 import { ref } from 'vue'
 import SearchBar from './SearchBar.vue'
+import { useToast } from '@/composables/useToast'
 
 // ============ 状态初始化 ============
 // 搜索激活状态（仅在用户按 Enter 或点击搜索按钮时激活）
@@ -191,66 +192,10 @@ const isPlatformMenuOpen = ref(false)
 const selectedPlatform = ref('All Platforms')
 
 // 可用平台列表
-const platforms = ['All Platforms', 'Twitter', 'YouTube', 'RSS', 'Medium', 'Email']
+const platforms = ['All Platforms', 'Twitter', 'YouTube', 'Bilibili', 'RSS', 'Medium', 'Email']
 
-// 搜索结果列表（模拟数据）
-const searchResults = ref([
-  {
-    id: 1,
-    name: 'Design Digest Daily',
-    username: '@designdigest',
-    followers: '245k',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuB_Aox6L1K_TzjDLlxjUQz40FcjNylIcXlGCbJl3QT0sDmQlXc6CjdF4sZ5rHhc8UyGWCyUFCfocLyueBbU-DnjxrKcpCIQCm_Pi4OvqIlbDbA2CksI14u3_1RdRl9eHxvYjXhGvJ2G_buvLQ6Zupn4DzizlVf6O9jPBC8YMzDUX2i9Ugg3L9HpYWMAQ3aOP5urYH4SoHDpFHQLehHbBHH-0fsSCIDq5XSv5eCzBXttQdI-1mpNbiNCg6SUhCoKdd2lNV6EfAtKRlM',
-    status: 'Highly Active',
-    statusColor: 'green',
-    icon: 'public',
-    isSubscribed: false,
-  },
-  {
-    id: 2,
-    name: 'Tech Innovations 2024',
-    username: '@techinnovate',
-    followers: '1.2M',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA6n9vMAMtsBIvs9IT42o3oMrJZF2yofq1w74DH2HacfSdk-P_-DwGFZCT6ielz9U8BYjtMIPcf6IpksMfRoxvYMJLLu7ZQuIDuzy2pBr-ddH7YAwx_MX-nD7w-s-y8bNIOXXDNLh_mI3piPB8_aoOZT958nznW619iXEBOhpdKvopxj6Ntd_-b8OfbSv3nXP6kij-RncK2GwMvMU_mbzBwt000dncbIvgzuqodBMVnS9p9Y2mt95YY9w7uSWdpQapskkO_5Vs3yxk',
-    status: null,
-    statusColor: 'red',
-    icon: 'play_arrow',
-    isSubscribed: false,
-  },
-  {
-    id: 3,
-    name: 'Future AI Weekly',
-    username: '@future_ai',
-    followers: '89k',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAo1yRDYyt65TQOlJETB2AgmZFPtoJ4s30sJuojyijUFuYKbwakyUK2yZGRiEDpY6uKHLT3C83Vzr0W5VF7-JM8rD-XiVeBldWh6XsaJtR9lmfB69IWlalfan32tGI7OrmG91Wb68bMM_0X2LO7u4NoAQzwCd61PWjVZHTlIkK0SkLdFtfcenAIYI1Ot1eXOtu2_EO5BBXeAUWH5PfhC1MXzyh1rxv2hvnDsa1xfgf4_7j06xmcKz1iPKAAnIa4QInz1GwaQbRXlvo',
-    status: 'Newsletter',
-    statusColor: 'sky',
-    icon: 'send',
-    isSubscribed: true,
-  },
-  {
-    id: 4,
-    name: "Sarah's AI Musings",
-    username: '@sarahwrites',
-    followers: '45k',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCXbLrKQYVGJRxiTRHnB64S3oNgy8m3S86xfoQW9WWmTjQ1uunPGoqFsB4aYrtmc0TnHZzHd3U6cMQKQOWQdYdAyGlRWbkWOukvm24Q567eHEWWZBC5eQU1uGxbjTexvfvPuHXlwyexLcDjqAqVZojOsvWfwsGlFMtU6xhFUnAdlq4U-V7UOUnNWjNR5GguYrbAvIG-dvicJV9YhiiLN97x0BwYLjkNvsRIjV2R83k47HRbviJO9fWYpwJVOj8qbBxor6He4dEopUA',
-    status: null,
-    statusColor: 'black',
-    icon: 'alternate_email',
-    isSubscribed: false,
-  },
-  {
-    id: 5,
-    name: 'Legacy Tech News',
-    username: '@legacytech',
-    followers: '12k',
-    avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBSYERAmujiyZZbebg1XEzIDxXMZfeE95zkMciBnBQlb1gkaD6QhDdk6o1mK0PxaYLjDSxtbCJGjp-HONBUhi5YtvcGkba-2xePU5hKKorPaTfcKjEr9YeWiAO050LJP6nyHMTqxoQYYZevw7-v8_d8ttPEe_rruCuFgbXYZlns_k6mzMh4l3u4T1tTlRj0MIuAiFzoGYFJKFV8GezwtZcz3_V3WS1vL2YdwrBiLhfre6SM0qu4I5ChJGsuWgpD1cXJUtsmOHJfbRk',
-    status: 'Inactive',
-    statusColor: 'gray',
-    icon: 'rss_feed',
-    isSubscribed: false,
-  },
-])
+// 搜索结果列表（初始化为空）
+const searchResults = ref([])
 
 // 快捷标签
 const quickTags = ['Recent News', 'Social Media Spam', 'Email Filtering', 'Ad Block Rules']
@@ -275,9 +220,96 @@ const handleSearch = async (query) => {
   // 关闭平台菜单
   isPlatformMenuOpen.value = false
 
-  // TODO: 后续对接 Go 后端 API
-  // const results = await fetchSearchResults(query, selectedPlatform.value)
-  // searchResults.value = results
+  const { show: showToast } = useToast()
+
+  try {
+    // ✅ 调用真实搜索 API
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+
+    // 构建搜索参数
+    const params = new URLSearchParams()
+    params.append('query', query)
+
+    // 平台映射
+    if (selectedPlatform.value !== 'All Platforms') {
+      const platformMap = {
+        'Twitter': 'twitter',
+        'YouTube': 'youtube',
+        'Bilibili': 'bilibili',
+        'RSS': 'blog',
+        'Medium': 'medium',
+        'Email': 'email',
+      }
+      const platformParam = platformMap[selectedPlatform.value]
+      if (platformParam) {
+        params.append('platform', platformParam)
+      }
+    }
+
+    const response = await fetch(
+      `${apiUrl}/sources/search?${params.toString()}`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`)
+    }
+
+    const results = await response.json()
+
+    // ✅ 转换 Go 后端的 Source 格式为前端期望的格式
+    searchResults.value = (results || []).map(source => ({
+      id: source.id,
+      name: source.name,
+      username: `@${source.platform}`,
+      followers: `优先级 ${source.priority}`,
+      avatar: getAvatarByPlatform(source.platform),
+      status: source.enabled ? 'Active' : 'Inactive',
+      statusColor: source.enabled ? 'green' : 'gray',
+      icon: getIconByPlatform(source.platform),
+      isSubscribed: false,
+      _originalData: source,
+    }))
+
+    console.log(`✅ 搜索完成，找到 ${searchResults.value.length} 个结果`)
+
+    if (searchResults.value.length === 0) {
+      showToast(`未找到关于 "${query}" 的订阅源`, 'info', 2000)
+    }
+  } catch (error) {
+    console.error('❌ 搜索失败:', error)
+    searchResults.value = []
+    showToast(`搜索失败: ${error.message}`, 'error', 3000)
+  }
+}
+
+// ✅ 根据平台获取头像
+const getAvatarByPlatform = (platform) => {
+  const avatars = {
+    'bilibili': 'https://static.bilibili.com/upload/web_platform/logo.png',
+    'twitter': 'https://abs.twimg.com/sticky/twitter_logo_blue.png',
+    'youtube': 'https://www.youtube.com/favicon.ico',
+    'medium': 'https://miro.medium.com/v2/resize:fit:96/1*eKHqpKVow6GM1zGyAd4mzg.png',
+    'blog': 'https://www.google.com/favicon.ico',
+    'email': 'https://fonts.gstatic.com/s/i/productlogos/mail_2020q4/v8/web-48dp/logo_gmail_colorful_circles_ios.png',
+  }
+  return avatars[platform] || 'https://www.google.com/favicon.ico'
+}
+
+// ✅ 根据平台获取图标
+const getIconByPlatform = (platform) => {
+  const icons = {
+    'bilibili': 'ondemand_video',
+    'twitter': 'language',
+    'youtube': 'play_circle',
+    'medium': 'article',
+    'blog': 'rss_feed',
+    'email': 'mail',
+  }
+  return icons[platform] || 'language'
 }
 
 /**
@@ -318,11 +350,64 @@ const handleQuickTag = (tag) => {
 /**
  * 切换订阅状态
  */
-const toggleSubscribe = (resultId) => {
+const toggleSubscribe = async (resultId) => {
   const result = searchResults.value.find(r => r.id === resultId)
-  if (result) {
-    result.isSubscribed = !result.isSubscribed
-    console.log(`${result.isSubscribed ? '✓ 已订阅' : '✗ 已取消订阅'}: ${result.name}`)
+  if (!result) return
+
+  const { show: showToast } = useToast()
+
+  // 如果原本没有订阅，执行订阅操作
+  if (!result.isSubscribed) {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+
+      const response = await fetch(
+        `${apiUrl}/sources`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: result._originalData.url,
+            author_name: result.name,
+            platform: result._originalData.platform,
+            priority: result._originalData.priority,
+            fetch_interval_seconds: result._originalData.fetch_interval_seconds,
+          })
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      result.isSubscribed = true
+      showToast(`✓ 已订阅: ${result.name}`, 'success', 2000)
+      console.log(`✓ 已订阅: ${result.name}`)
+    } catch (error) {
+      showToast(`订阅失败: ${error.message}`, 'error', 2000)
+      console.error('Subscribe error:', error)
+    }
+  } else {
+    // 取消订阅
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+
+      const response = await fetch(
+        `${apiUrl}/sources/${result.id}`,
+        { method: 'DELETE' }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      result.isSubscribed = false
+      showToast(`✗ 已取消订阅: ${result.name}`, 'success', 2000)
+      console.log(`✗ 已取消订阅: ${result.name}`)
+    } catch (error) {
+      showToast(`取消订阅失败: ${error.message}`, 'error', 2000)
+      console.error('Unsubscribe error:', error)
+    }
   }
 }
 </script>

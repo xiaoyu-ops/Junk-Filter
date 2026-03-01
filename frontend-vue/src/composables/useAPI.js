@@ -496,19 +496,41 @@ export const useAPI = () => {
      *
      * @param {string} taskId - 任务 ID (可以是 "source-123" 或 "123" 格式)
      * @param {string} message - 用户的问题或指令
+     * @param {object} llmConfig - LLM 配置 {modelName, apiKey, baseUrl}
+     * @param {object} evalConfig - 评估配置 {temperature, topP, maxTokens}
      * @param {function} onEvent - SSE 事件回调
      * @returns {function} 取消连接的函数
      */
-    taskChat: (taskId, message, onEvent) => {
+    taskChat: (taskId, message, llmConfig = {}, evalConfig = {}, onEvent) => {
+      // 处理参数重载：可能没有传递 llmConfig/evalConfig
+      if (typeof llmConfig === 'function') {
+        onEvent = llmConfig
+        llmConfig = {}
+        evalConfig = {}
+      } else if (typeof evalConfig === 'function') {
+        onEvent = evalConfig
+        evalConfig = {}
+      }
+
       // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
       const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
 
       const url = `${apiUrl}/api/tasks/${actualTaskId}/chat`
 
       try {
-        // 发送 POST 请求
+        // 发送 POST 请求，包含 LLM 和评估配置
         const requestBody = JSON.stringify({
           message: message,
+          llm_config: {
+            model_name: llmConfig.modelName,
+            api_key: llmConfig.apiKey,
+            base_url: llmConfig.baseUrl,
+          },
+          eval_config: {
+            temperature: evalConfig.temperature,
+            topP: evalConfig.topP,
+            maxTokens: evalConfig.maxTokens,
+          },
         })
 
         const response = fetch(url, {

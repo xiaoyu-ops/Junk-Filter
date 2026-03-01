@@ -146,3 +146,41 @@ func (sh *SourceHandler) FetchSourceNow(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "Source fetch triggered"})
 }
+
+// SearchSources searches for RSS sources by query and optional platform
+// GET /api/sources/search?query={keyword}&platform={platform}
+func (sh *SourceHandler) SearchSources(c *gin.Context) {
+	query := c.Query("query")
+	platform := c.Query("platform")
+
+	if query == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "query parameter is required"})
+		return
+	}
+
+	sources, err := sh.sourceRepo.Search(c.Request.Context(), query, platform)
+	if err != nil {
+		log.Printf("Error searching sources: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to search sources"})
+		return
+	}
+
+	// Convert to response format
+	var responses []map[string]interface{}
+	for _, source := range sources {
+		responses = append(responses, map[string]interface{}{
+			"id":                     source.ID,
+			"name":                   source.AuthorName,
+			"url":                    source.URL,
+			"platform":               source.Platform,
+			"priority":               source.Priority,
+			"fetch_interval_seconds": source.FetchIntervalSeconds,
+			"enabled":                source.Enabled,
+			"last_fetch_time":        source.LastFetchTime,
+			"created_at":             source.CreatedAt,
+			"updated_at":             source.UpdatedAt,
+		})
+	}
+
+	c.JSON(http.StatusOK, responses)
+}

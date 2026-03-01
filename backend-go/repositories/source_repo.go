@@ -188,3 +188,58 @@ func (sr *SourceRepository) UpdateLastFetchTime(ctx context.Context, id int64, l
 	)
 	return err
 }
+
+// Search searches for sources by query (author_name or url) and optional platform filter
+func (sr *SourceRepository) Search(ctx context.Context, query, platform string) ([]models.Source, error) {
+	var sources []models.Source
+
+	// Build query with fuzzy search on author_name and url
+	sqlQuery := `
+		SELECT id, platform, url, author_name, priority,
+		       fetch_interval_seconds, enabled, last_fetch_time,
+		       created_at, updated_at
+		FROM sources
+		WHERE (author_name ILIKE $1 OR url ILIKE $1)
+	`
+	args := []interface{}{"%" + query + "%"}
+
+	// Add platform filter if specified
+	if platform != "" {
+		sqlQuery += " AND platform = $2"
+		args = append(args, platform)
+	}
+
+	sqlQuery += " ORDER BY priority DESC, created_at DESC"
+
+	rows, err := sr.db.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var source models.Source
+		err := rows.Scan(
+			&source.ID,
+			&source.Platform,
+			&source.URL,
+			&source.AuthorName,
+			&source.Priority,
+			&source.FetchIntervalSeconds,
+			&source.Enabled,
+			&source.LastFetchTime,
+			&source.CreatedAt,
+			&source.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		sources = append(sources, source)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return sources, nil
+}

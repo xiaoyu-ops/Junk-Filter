@@ -102,7 +102,13 @@
       "Bash(.truesignal-go.exe)",
       "Bash(truesignal-go.exe)",
       "Bash(timeout:*)",
-      "Bash(ren:*)"
+      "Bash(ren:*)",
+      "Bash(openssl rand:*)",
+      "Bash(docker rm:*)",
+      "Bash(.start-all.bat)",
+      "Bash(Stop-Process -Id 29240 -Force)",
+      "Bash(cmd /c \"taskkill /PID 29240 /F\")",
+      "Bash(cmd /c \"netstat -ano | find \"\":8080\"\"\")"
     ]
   }
 }

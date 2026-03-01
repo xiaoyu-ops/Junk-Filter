@@ -122,6 +122,7 @@ export const useConfigStore = defineStore('config', () => {
     if (saved) {
       try {
         const config = JSON.parse(saved)
+        apiKey.value = config.apiKey || apiKey.value
         modelName.value = config.modelName || modelName.value
         baseUrl.value = config.baseUrl || baseUrl.value
         if (config.apiModel && !config.modelName) {
@@ -152,6 +153,7 @@ export const useConfigStore = defineStore('config', () => {
 
       // 保存到localStorage
       localStorage.setItem('config', JSON.stringify({
+        apiKey: apiKey.value,
         modelName: modelName.value,
         baseUrl: baseUrl.value,
         temperature: temperature.value,

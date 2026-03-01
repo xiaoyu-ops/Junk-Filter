@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -31,13 +33,24 @@ type Config struct {
 		MaxIdleConns int `yaml:"max_idle_conns"`  // ← P0: 新增支持
 	} `yaml:"database"`
 	Redis struct {
-		Host string `yaml:"host"`
-		Port int    `yaml:"port"`
-		DB   int    `yaml:"db"`
+		Host     string `yaml:"host"`
+		Port     int    `yaml:"port"`
+		DB       int    `yaml:"db"`
+		Password string `yaml:"password"`
 	} `yaml:"redis"`
 	Server struct {
 		Port int `yaml:"port"`
 	} `yaml:"server"`
+	PythonAPI struct {
+		URL string `yaml:"url"`  // P1-4: Python 后端 API URL
+	} `yaml:"python_api"`
+	CORS struct {
+		AllowedOrigins   []string `yaml:"allowed_origins"`
+		AllowedMethods   []string `yaml:"allowed_methods"`
+		AllowedHeaders   []string `yaml:"allowed_headers"`
+		AllowCredentials bool     `yaml:"allow_credentials"`
+		MaxAge           int      `yaml:"max_age"`
+	} `yaml:"cors"`
 	Ingestion struct {
 		WorkerCount   int    `yaml:"worker_count"`
 		Timeout       string `yaml:"timeout"`
@@ -162,11 +175,20 @@ func loadConfig() *Config {
 	cfg.Redis.Host = "localhost"
 	cfg.Redis.Port = 6379
 	cfg.Redis.DB = 0
+	cfg.Redis.Password = ""
 	cfg.Server.Port = 8080
+	cfg.PythonAPI.URL = "http://localhost:8081"  // P1-4: Python API 默认地址
 	cfg.Ingestion.WorkerCount = 5
 	cfg.Ingestion.Timeout = "10s"
 	cfg.Ingestion.RetryMax = 3
 	cfg.Ingestion.FetchInterval = "1h"
+
+	// CORS 默认值 - 严格模式
+	cfg.CORS.AllowedOrigins = []string{"http://localhost:5173"}
+	cfg.CORS.AllowedMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
+	cfg.CORS.AllowedHeaders = []string{"Content-Type", "Authorization"}
+	cfg.CORS.AllowCredentials = false
+	cfg.CORS.MaxAge = 3600
 
 	// 尝试从 config.yaml 读取
 	if data, err := os.ReadFile("config.yaml"); err == nil {
@@ -190,6 +212,26 @@ func loadConfig() *Config {
 	}
 	if dbname := os.Getenv("DB_NAME"); dbname != "" {
 		cfg.Database.DBName = dbname
+	}
+	if sslMode := os.Getenv("DB_SSL_MODE"); sslMode != "" {
+		cfg.Database.SSLMode = sslMode
+	}
+	if password := os.Getenv("REDIS_PASSWORD"); password != "" {
+		cfg.Redis.Password = password
+	}
+	if pythonAPI := os.Getenv("PYTHON_API_URL"); pythonAPI != "" {
+		cfg.PythonAPI.URL = pythonAPI
+	}
+
+	// CORS 环境变量覆盖
+	if origins := os.Getenv("CORS_ALLOWED_ORIGINS"); origins != "" {
+		cfg.CORS.AllowedOrigins = strings.Split(origins, ",")
+	}
+	if methods := os.Getenv("CORS_ALLOWED_METHODS"); methods != "" {
+		cfg.CORS.AllowedMethods = strings.Split(methods, ",")
+	}
+	if headers := os.Getenv("CORS_ALLOWED_HEADERS"); headers != "" {
+		cfg.CORS.AllowedHeaders = strings.Split(headers, ",")
 	}
 
 	return cfg
@@ -232,20 +274,39 @@ func initDatabase(cfg *Config) (*sql.DB, error) {
 
 func initRedis(cfg *Config) *redis.Client {
 	return redis.NewClient(&redis.Options{
-		Addr: fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
-		DB:   cfg.Redis.DB,
+		Addr:     fmt.Sprintf("%s:%d", cfg.Redis.Host, cfg.Redis.Port),
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	})
 }
 
 func startServer(port int) {
 	router := gin.Default()
 
-	// 添加 CORS 中间件
+	// 添加 CORS 中间件 - 环境变量驱动的严格模式
 	router.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+		origin := c.Request.Header.Get("Origin")
+
+		// 检查源是否在允许列表中
+		isAllowed := false
+		for _, allowed := range appCtx.Config.CORS.AllowedOrigins {
+			if allowed == "*" || allowed == origin {
+				isAllowed = true
+				break
+			}
+		}
+
+		if isAllowed {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			if appCtx.Config.CORS.AllowCredentials {
+				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+		}
+
+		// 只允许配置中的方法和头
+		c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(appCtx.Config.CORS.AllowedMethods, ", "))
+		c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(appCtx.Config.CORS.AllowedHeaders, ", "))
+		c.Writer.Header().Set("Access-Control-Max-Age", fmt.Sprintf("%d", appCtx.Config.CORS.MaxAge))
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -260,12 +321,12 @@ func startServer(port int) {
 	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo)
 	evaluationHandler := handlers.NewEvaluationHandler(appCtx.EvaluationRepo)
 	messageHandler := handlers.NewMessageHandler(appCtx.MessageRepo)
-	chatHandler := handlers.NewChatHandler(appCtx.MessageRepo, "http://localhost:8081")
+	chatHandler := handlers.NewChatHandler(appCtx.MessageRepo, appCtx.Config.PythonAPI.URL)
 	taskChatHandler := handlers.NewTaskChatHandler(
 		appCtx.MessageRepo,
 		appCtx.SourceRepo,
 		appCtx.EvaluationRepo,
-		"http://localhost:8081",
+		appCtx.Config.PythonAPI.URL,
 	)
 
 	// 注册路由
@@ -285,11 +346,17 @@ func startServer(port int) {
 	})
 
 	addr := fmt.Sprintf("0.0.0.0:%d", port)
-	log.Printf("DEBUG: About to start server on %s\n", addr)
-	log.Printf("DEBUG: router.Run() is blocking call\n")
-	if err := router.Run(addr); err != nil {
+	log.Printf("✓ Server starting on %s\n", addr)
+
+	// 创建自定义 TCP 监听器（支持端口重用）
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("Failed to create listener: %v", err)
+	}
+	defer listener.Close()
+
+	if err := router.RunListener(listener); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
-	log.Printf("DEBUG: Server exited (this should not print)\n")
 }
 

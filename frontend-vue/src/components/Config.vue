@@ -658,8 +658,16 @@ const exportConfig = async () => {
   }
 }
 
-onMounted(() => {
-  configStore.loadConfig()
+onMounted(async () => {
+  await configStore.loadConfig()
+  console.log('[Config] Loaded config:', {
+    apiKey: configStore.apiKey ? configStore.apiKey.substring(0, 20) + '***' : 'empty',
+    modelName: configStore.modelName,
+    baseUrl: configStore.baseUrl,
+    temperature: configStore.temperature,
+    topP: configStore.topP,
+    maxTokens: configStore.maxTokens,
+  })
 })
 </script>
 

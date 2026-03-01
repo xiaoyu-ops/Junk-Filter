@@ -9,6 +9,7 @@ import logging
 import os
 from typing import Optional
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -67,6 +68,8 @@ class TaskChatRequest(BaseModel):
     message: str
     task_id: int
     agent_context: dict  # {task_metadata, chat_history, recent_cards, current_config, ...}
+    llm_config: Optional[dict] = None  # 用户提供的 LLM 配置 {model_name, api_key, base_url}
+    eval_config: Optional[dict] = None  # 用户提供的评估配置 {temperature, topP, maxTokens}
 
 
 class TaskChatResponse(BaseModel):
@@ -115,21 +118,51 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# 配置 CORS
+# 配置 CORS - 从环境变量驱动
+cors_origins = os.getenv(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173"  # 开发环境默认值
+).split(",")
+
+cors_methods = os.getenv(
+    "CORS_ALLOWED_METHODS",
+    "GET,POST,PUT,DELETE,OPTIONS"
+).split(",")
+
+cors_headers = os.getenv(
+    "CORS_ALLOWED_HEADERS",
+    "Content-Type,Authorization"
+).split(",")
+
+cors_allow_credentials = os.getenv(
+    "CORS_ALLOW_CREDENTIALS",
+    "false"
+).lower() == "true"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源（开发环境）
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_credentials=cors_allow_credentials,
+    allow_methods=cors_methods,
+    allow_headers=cors_headers,
+    max_age=3600,
 )
+
+logger.info(f"✓ CORS 配置: origins={cors_origins}, credentials={cors_allow_credentials}")
 
 # 初始化评估 Agent
 model_id = os.getenv("LLM_MODEL_ID") or os.getenv("llm_model_id") or settings.llm_model_id or settings.llm_model or "gpt-4o"
 api_key = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
 api_base = os.getenv("LLM_BASE_URL") or os.getenv("llm_base_url") or settings.llm_base_url or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
 
-logger.info(f"LLM Configuration: Model={model_id}, Base={api_base}")
+# P1-7: 脱敏日志 - 仅记录主机名，不记录完整 URL
+try:
+    parsed_url = urlparse(api_base)
+    api_base_hostname = parsed_url.hostname or api_base
+except Exception:
+    api_base_hostname = api_base
+
+logger.info(f"✓ LLM Configuration: Model={model_id}, Base={api_base_hostname}")
 
 evaluator = ContentEvaluationAgent(
     model=model_id,
@@ -346,7 +379,9 @@ async def task_chat(task_id: int, request: TaskChatRequest):
             reply = await generate_task_chat_reply(
                 user_message=request.message,
                 system_prompt=system_prompt,
-                task_metadata=task_meta
+                task_metadata=task_meta,
+                llm_config=request.llm_config,      # ← 传递用户提供的 LLM 配置
+                eval_config=request.eval_config     # ← 传递用户提供的评估配置
             )
 
             # ==================== 解析回复中的参数更新 ====================
@@ -390,17 +425,31 @@ async def task_chat(task_id: int, request: TaskChatRequest):
 
 # ======================== 任务聊天的辅助函数 ========================
 
-async def generate_task_chat_reply(user_message: str, system_prompt: str, task_metadata: dict) -> str:
+async def generate_task_chat_reply(user_message: str, system_prompt: str, task_metadata: dict, llm_config: dict = None, eval_config: dict = None) -> str:
     """
     生成任务特定的聊天回复
 
     使用真实的 LLM（如 OpenAI）生成自然语言回复。
     如果 LLM 不可用，回退到规则匹配。
+
+    Args:
+        user_message: 用户消息
+        system_prompt: 系统提示词
+        task_metadata: 任务元数据
+        llm_config: 用户提供的 LLM 配置
+        eval_config: 用户提供的评估配置
     """
     # 首先尝试使用真实 LLM
-    if LLM_AVAILABLE and settings.openai_api_key and settings.openai_api_key != "sk-xxxxx":
+    # 条件：有用户提供的llm_config+api_key，或者有环境变量api_key
+    has_llm_config = llm_config and llm_config.get("api_key")
+    has_env_key = settings.openai_api_key and settings.openai_api_key != "sk-xxxxx"
+
+    logger.info(f"[LLM] has_llm_config={has_llm_config}, has_env_key={has_env_key}")
+
+    if has_llm_config or has_env_key:
         try:
-            return await _call_llm(user_message, system_prompt)
+            logger.info(f"[LLM] Calling _call_llm with llm_config={llm_config}")
+            return await _call_llm(user_message, system_prompt, llm_config, eval_config)
         except Exception as e:
             logger.warning(f"LLM call failed, falling back to rule-based responses: {e}")
 
@@ -408,46 +457,91 @@ async def generate_task_chat_reply(user_message: str, system_prompt: str, task_m
     return _fallback_rule_based_reply(user_message, task_metadata)
 
 
-async def _call_llm(user_message: str, system_prompt: str) -> str:
-    """使用 LangChain + OpenAI 调用真实 LLM"""
+async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = None, eval_config: dict = None) -> str:
+    """使用 OpenAI SDK 直接调用真实 LLM
+
+    Args:
+        user_message: 用户消息
+        system_prompt: 系统提示词
+        llm_config: 用户提供的 LLM 配置 {model_name, api_key, base_url}
+        eval_config: 用户提供的评估配置 {temperature, topP, maxTokens}
+    """
     try:
-        # 强制从 .env 读取模型名，不使用任何硬编码值
-        model_from_env = os.getenv("LLM_MODEL_ID") or os.getenv("llm_model_id")
-        api_key_from_env = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
-        base_url_from_env = os.getenv("LLM_BASE_URL") or os.getenv("llm_base_url")
+        # 优先使用用户提供的配置，其次使用环境变量，最后使用默认值
+        model_name = None
+        api_key = None
+        base_url = None
+        temperature = settings.llm_temperature
+        max_tokens = settings.llm_max_tokens
 
-        logger.info(f"[LLM Call] Model from .env: {model_from_env}")
-        logger.info(f"[LLM Call] Base URL from .env: {base_url_from_env}")
+        # 1. 提取 LLM 配置
+        if llm_config:
+            model_name = llm_config.get("model_name")
+            api_key = llm_config.get("api_key")
+            base_url = llm_config.get("base_url")
+            logger.info(f"[LLM Call] ===== RECEIVED llm_config =====")
+            logger.info(f"[LLM Call] model_name: {model_name}")
+            logger.info(f"[LLM Call] api_key (FULL): {api_key}")
+            logger.info(f"[LLM Call] api_key length: {len(api_key) if api_key else 0}")
+            logger.info(f"[LLM Call] base_url: {base_url}")
+            logger.info(f"[LLM Call] ===== END llm_config =====")
 
-        # 构建 ChatOpenAI 参数
-        llm_kwargs = {
-            "api_key": api_key_from_env or settings.openai_api_key,
-            "model_name": model_from_env or settings.llm_model_id,
-            "temperature": settings.llm_temperature,
-            "max_tokens": settings.llm_max_tokens,
+        # 2. 如果用户没有提供，使用环境变量
+        if not model_name:
+            model_name = os.getenv("LLM_MODEL_ID") or os.getenv("llm_model_id") or settings.llm_model_id
+        if not api_key:
+            api_key = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or settings.openai_api_key
+        if not base_url:
+            base_url = os.getenv("LLM_BASE_URL") or os.getenv("llm_base_url") or settings.llm_base_url
+
+        # 3. 提取评估配置
+        if eval_config:
+            if "temperature" in eval_config and eval_config["temperature"] is not None:
+                temperature = float(eval_config["temperature"])
+            if "maxTokens" in eval_config and eval_config["maxTokens"] is not None:
+                max_tokens = int(eval_config["maxTokens"])
+
+        logger.info(f"[LLM Call] Final Model: {model_name}")
+        logger.info(f"[LLM Call] Final Base URL: {base_url}")
+        logger.info(f"[LLM Call] Final API Key length: {len(api_key) if api_key else 0}, First 30 chars: {api_key[:30] if api_key else 'None'}...")
+        logger.info(f"[LLM Call] Temperature: {temperature}, Max Tokens: {max_tokens}")
+
+        # 使用 OpenAI SDK 直接调用（而不是 LangChain）
+        from openai import OpenAI
+
+        # 构建 OpenAI 客户端参数
+        client_kwargs = {
+            "api_key": api_key,
             "timeout": settings.llm_timeout,
         }
 
         # 如果配置了自定义 base_url（如中转站），使用 base_url 参数
-        if base_url_from_env or settings.llm_base_url:
-            llm_kwargs["base_url"] = base_url_from_env or settings.llm_base_url
-            logger.info(f"Using custom LLM base_url: {llm_kwargs['base_url']}")
-            logger.info(f"Using model: {llm_kwargs['model_name']}")
+        if base_url:
+            client_kwargs["base_url"] = base_url
+            logger.info(f"[LLM Call] Using custom base_url: {base_url}")
 
-        llm = ChatOpenAI(**llm_kwargs)
+        logger.info(f"[LLM Call] OpenAI client kwargs: {dict((k, v if k != 'api_key' else (v[:30]+'...' if v else None)) for k, v in client_kwargs.items())}")
+
+        client = OpenAI(**client_kwargs)
 
         # 调用 LLM
         response = await asyncio.to_thread(
-            llm.invoke,
-            [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ]
+            lambda: client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_message}
+                ],
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
         )
 
-        return response.content if hasattr(response, 'content') else str(response)
+        return response.choices[0].message.content if response.choices else ""
     except Exception as e:
-        logger.error(f"LLM API call failed: {e}")
+        logger.error(f"[LLM Call] Full error details: {type(e).__name__}: {str(e)}")
+        import traceback
+        logger.error(f"[LLM Call] Traceback: {traceback.format_exc()}")
         raise
 
 

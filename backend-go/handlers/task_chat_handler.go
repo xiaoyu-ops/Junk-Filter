@@ -41,7 +41,9 @@ func NewTaskChatHandler(
 
 // TaskChatRequest represents a user query for task-specific consultation
 type TaskChatRequest struct {
-	Message string `json:"message" binding:"required"`
+	Message    string                 `json:"message" binding:"required"`
+	LLMConfig  map[string]interface{} `json:"llm_config"`   // User-provided LLM configuration
+	EvalConfig map[string]interface{} `json:"eval_config"`  // User-provided evaluation configuration
 }
 
 // TaskChatResponse represents the AI's response to a user query
@@ -119,7 +121,7 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 
 	// Step 1: Gather context
 	ctx := context.Background()
-	agentCtx, err := ch.gatherAgentContext(ctx, taskID)
+	agentCtx, err := ch.gatherAgentContext(ctx, taskID, req.LLMConfig, req.EvalConfig)
 	if err != nil {
 		log.Printf("[Task Chat] Error gathering context: %v", err)
 		sendSSEEvent(w, flusher, SSEEvent{
@@ -169,6 +171,8 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 		"message":        req.Message,
 		"task_id":        taskID,
 		"agent_context":  agentCtx,
+		"llm_config":     req.LLMConfig,    // ← 添加用户提供的 LLM 配置
+		"eval_config":    req.EvalConfig,   // ← 添加用户提供的评估配置
 	}
 
 	payloadBytes, _ := json.Marshal(payload)
@@ -215,7 +219,7 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 }
 
 // gatherAgentContext collects all contextual information for the Agent
-func (ch *TaskChatHandler) gatherAgentContext(ctx context.Context, taskID int64) (*AgentContext, error) {
+func (ch *TaskChatHandler) gatherAgentContext(ctx context.Context, taskID int64, llmConfig, evalConfig map[string]interface{}) (*AgentContext, error) {
 	agentCtx := &AgentContext{
 		TaskMetadata:  make(map[string]interface{}),
 		ChatHistory:   []models.Message{},
@@ -256,12 +260,34 @@ func (ch *TaskChatHandler) gatherAgentContext(ctx context.Context, taskID int64)
 		// Format: {id, decision, innovation_score, depth_score, tldr, key_concepts, timestamp}
 	}
 
-	// 4. Current Agent configuration (from settings or task-specific overrides)
+	// 4. Current Agent configuration
+	// Use user-provided config if available, otherwise use defaults
+	temperature := 0.7
+	topP := 0.9
+	maxTokens := 2000
+
+	if evalConfig != nil {
+		if temp, ok := evalConfig["temperature"].(float64); ok {
+			temperature = temp
+		}
+		if p, ok := evalConfig["topP"].(float64); ok {
+			topP = p
+		}
+		if tokens, ok := evalConfig["maxTokens"].(float64); ok {
+			maxTokens = int(tokens)
+		}
+	}
+
 	agentCtx.CurrentConfig = map[string]interface{}{
-		"temperature": 0.7,
-		"topP":        0.9,
-		"maxTokens":   2000,
-		"filter_rules": "default",  // Would be fetched from task config
+		"temperature":  temperature,
+		"topP":         topP,
+		"maxTokens":    maxTokens,
+		"filter_rules": "default",
+	}
+
+	// Add LLM config to context if provided
+	if llmConfig != nil {
+		agentCtx.CurrentConfig["llm_model"] = llmConfig
 	}
 
 	return agentCtx, nil
