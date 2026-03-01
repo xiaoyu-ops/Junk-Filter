@@ -58,8 +58,15 @@ pip install -r requirements.txt && python main.py
 
 > 👉 **所有文档已汇总**：请查看 **[INDEX.md](./INDEX.md)** - 这是文档导航中心，根据你的角色推荐合适的阅读路径。
 
-**6 个分类汇总文档：**
+### 📋 核心文档（按优先级）
 
+#### 🆕 新增：Dual-Engine 评估系统 (2026-03-01)
+- **[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** - 实现总结（核心更新）
+- **[QUICK_INTEGRATION_GUIDE.md](./QUICK_INTEGRATION_GUIDE.md)** - 5分钟快速集成指南
+- **[DEPLOYMENT_VERIFICATION_CHECKLIST.md](./DEPLOYMENT_VERIFICATION_CHECKLIST.md)** - 部署验证清单
+- **[DUAL_ENGINE_EVALUATION_IMPLEMENTATION.md](./DUAL_ENGINE_EVALUATION_IMPLEMENTATION.md)** - 完整技术规范
+
+#### 原有文档
 | 文档 | 用途 | 适合人群 | 时间 |
 |------|------|---------|------|
 | **[00_COMPLETE_SUMMARY.md](./00_COMPLETE_SUMMARY.md)** ⭐ | 项目总览、一页纸摘要 | 所有人 | 5min |

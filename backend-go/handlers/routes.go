@@ -18,6 +18,7 @@ func RegisterSourceRoutes(router *gin.Engine, handler *SourceHandler) {
 func RegisterContentRoutes(router *gin.Engine, handler *ContentHandler) {
 	content := router.Group("/api/content")
 	{
+		content.GET("/stats", handler.GetContentStats)  // ← 必须在 /:id 之前，防止 stats 被当作 ID
 		content.GET("", handler.ListContent)
 		content.GET("/:id", handler.GetContent)
 	}

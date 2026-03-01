@@ -1,24 +1,13 @@
 package handlers
 
 import (
+	"database/sql"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/junkfilter/backend-go/internal/models"
-	"github.com/junkfilter/backend-go/internal/repository"
 )
-
-type SearchHandler struct {
-	contentRepo *repository.ContentRepository
-}
-
-func NewSearchHandler(contentRepo *repository.ContentRepository) *SearchHandler {
-	return &SearchHandler{
-		contentRepo: contentRepo,
-	}
-}
 
 /**
  * 搜索接口
@@ -35,7 +24,7 @@ func NewSearchHandler(contentRepo *repository.ContentRepository) *SearchHandler 
  * - 支持全文搜索（ILIKE 支持）
  * - 返回匹配内容 + 对应的评估结果
  */
-func (h *SearchHandler) Search(c *gin.Context) {
+func SearchContent(c *gin.Context) {
 	query := c.Query("q")
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -64,18 +53,24 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	query = strings.TrimSpace(query)
 	searchPattern := "%" + query + "%"
 
+	// 从上下文获取数据库连接
+	dbInterface, exists := c.Get("db")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "database not available",
+		})
+		return
+	}
+
+	db, ok := dbInterface.(*sql.DB)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "invalid database connection",
+		})
+		return
+	}
+
 	// 构建 SQL 查询
-	// 注意：这里假设 contentRepo 有一个支持 ILIKE 的查询方法
-	// 如果没有，需要手动编写 SQL
-
-	db := c.MustGet("db").(interface {
-		Query(string, ...interface{}) interface {
-			Scan(...interface{}) error
-		}
-	})
-
-	var results []ContentSearchResult
-
 	sql := `
 		SELECT
 			c.id,
@@ -107,9 +102,6 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	`
 
 	// 执行查询
-	// 这里的实现取决于你的数据库驱动（gorm, sqlc, 原生 sql 等）
-	// 下面是伪代码，需要根据实际情况调整
-
 	rows, err := db.Query(sql, searchPattern, status, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -118,6 +110,8 @@ func (h *SearchHandler) Search(c *gin.Context) {
 		return
 	}
 	defer rows.Close()
+
+	var results []ContentSearchResult
 
 	for rows.Next() {
 		var r ContentSearchResult
@@ -156,3 +150,4 @@ type ContentSearchResult struct {
 	TLDR             string `json:"tldr"`
 	SourceName       string `json:"source_name"`
 }
+

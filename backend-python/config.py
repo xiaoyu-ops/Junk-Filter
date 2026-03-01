@@ -1,6 +1,10 @@
 import os
 from pydantic_settings import BaseSettings
 from pydantic import ConfigDict
+import asyncpg
+import logging
+
+logger = logging.getLogger(__name__)
 
 # 手动加载 .env 文件到 os.environ
 # 优先加载 backend-python/.env，然后加载项目根目录 .env（后者覆盖前者）
@@ -74,5 +78,81 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+# ============ 从数据库加载 LLM 配置 ============
+
+async def load_llm_config_from_db(pool: asyncpg.pool.Pool) -> dict:
+    """
+    从数据库加载最新的 LLM 配置
+
+    Args:
+        pool: asyncpg 连接池
+
+    Returns:
+        dict: LLM 配置 {model_name, api_key, base_url, temperature, top_p, max_tokens}
+        如果数据库中没有配置，返回 None
+    """
+    try:
+        async with pool.acquire() as conn:
+            # 获取最新的启用配置
+            row = await conn.fetchrow("""
+                SELECT
+                    model_name,
+                    api_key,
+                    base_url,
+                    temperature,
+                    top_p,
+                    max_tokens
+                FROM model_config
+                WHERE enabled = true
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """)
+
+            if row:
+                config = {
+                    'model_name': row['model_name'],
+                    'api_key': row['api_key'],
+                    'base_url': row['base_url'],
+                    'temperature': row['temperature'],
+                    'top_p': row['top_p'],
+                    'max_tokens': row['max_tokens'],
+                }
+                logger.info(f"[Config] Loaded LLM config from DB: {config['model_name']}")
+                return config
+            else:
+                logger.warning("[Config] No enabled LLM config found in database")
+                return None
+    except Exception as e:
+        logger.error(f"[Config] Error loading LLM config from DB: {e}")
+        return None
+
+
+async def initialize_llm_config(pool: asyncpg.pool.Pool):
+    """
+    初始化 LLM 配置
+
+    流程：
+    1. 尝试从数据库加载配置
+    2. 如果没有配置，使用环境变量/默认值
+    3. 如果有配置，覆盖全局 settings
+    """
+    db_config = await load_llm_config_from_db(pool)
+
+    if db_config and db_config.get('api_key'):
+        # 使用数据库配置
+        settings.llm_model = db_config['model_name']
+        settings.openai_api_key = db_config['api_key']
+        settings.llm_base_url = db_config.get('base_url', '')
+        settings.llm_temperature = db_config.get('temperature', 0.7)
+        settings.llm_max_tokens = db_config.get('max_tokens', 2000)
+        logger.info(f"[Config] Using LLM config from database: {db_config['model_name']}")
+    else:
+        # 使用环境变量
+        logger.info("[Config] Using LLM config from environment variables")
+        if not settings.openai_api_key:
+            logger.warning("[Config] No API key configured - will use rule-based evaluator")
+
 
 

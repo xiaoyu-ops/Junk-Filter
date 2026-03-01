@@ -199,12 +199,17 @@ func (cr *ContentRepository) List(ctx context.Context, filter *models.ContentFil
 	for rows.Next() {
 		content := &models.Content{}
 		var publishedAt sql.NullTime
+		var sourceID sql.NullInt64
 
-		err := rows.Scan(&content.ID, &content.TaskID, &content.SourceID, &content.Platform, &content.AuthorName,
+		err := rows.Scan(&content.ID, &content.TaskID, &sourceID, &content.Platform, &content.AuthorName,
 			&content.Title, &content.OriginalURL, &content.ContentHash, &content.CleanContent,
 			&publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+
+		if sourceID.Valid {
+			content.SourceID = sourceID.Int64
 		}
 
 		if publishedAt.Valid {

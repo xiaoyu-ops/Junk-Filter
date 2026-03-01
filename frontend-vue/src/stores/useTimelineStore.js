@@ -1,65 +1,230 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 export const useTimelineStore = defineStore('timeline', () => {
   const activeFilter = ref('All')
   const isDetailDrawerOpen = ref(false)
   const selectedCard = ref(null)
+  const cards = ref([])
+  const isLoading = ref(false)
+  const error = ref(null)
 
-  const cards = ref([
-    {
-      id: 1,
-      author: 'TechDaily',
-      authorTime: '2h ago',
-      title: 'AI Model Breakdown',
-      content: 'A comprehensive look into the new architecture changes proposed in the latest research paper. It highlights significant improvements in processing efficiency and reduced latency for real-time applications.',
-      status: 'Approved',
-      statusColor: 'green',
-    },
-    {
-      id: 2,
-      author: 'DesignPro',
-      authorTime: '4h ago',
-      title: 'UI Trends 2024',
-      content: 'Discussing the shift towards neo-brutalism and high contrast interfaces. While visually striking, concerns about accessibility and long-term user retention remain a topic of heated debate.',
-      status: 'Rejected',
-      statusColor: 'red',
-    },
-    {
-      id: 3,
-      author: 'CodeMaster',
-      authorTime: '5h ago',
-      title: 'Rust vs Go',
-      content: 'Performance benchmarks comparing Rust and Go in high-concurrency scenarios. The results show Rust edging out in memory safety, while Go maintains superiority in development speed.',
-      status: 'Approved',
-      statusColor: 'green',
-    },
-    {
-      id: 4,
-      author: 'StartupLife',
-      authorTime: '6h ago',
-      title: 'Funding Winter?',
-      content: 'Analyzing the current venture capital landscape. Despite the gloom, certain sectors like Generative AI and Climate Tech are seeing record investments.',
-      status: 'Review',
-      statusColor: 'amber',
-    },
-  ])
+  // ✨ RSS 抓取进度统计（新增）
+  const stats = ref({
+    pending: 0,
+    processing: 0,
+    evaluated: 0,
+    discarded: 0,
+    total: 0
+  })
+  const isLoadingStats = ref(false)
 
-  // 设置过滤器
-  const setFilter = (filter) => {
-    activeFilter.value = filter
+  const API_BASE_URL = 'http://localhost:8080/api'
+
+  /**
+   * 决策值到显示文本和颜色的映射
+   */
+  const decisionMap = {
+    'INTERESTING': { text: 'Interesting', color: 'green' },
+    'BOOKMARK': { text: 'Bookmark', color: 'amber' },
+    'SKIP': { text: 'Skip', color: 'red' }
   }
 
-  // 打开详情抽屉
+  /**
+   * 将数据库中的内容记录转换为 UI 卡片格式
+   */
+  const transformContentToCard = (contentItem) => {
+    // 处理不同的响应格式：可能是嵌套的 {ContentResponse, evaluation} 或直接的 ContentResponse
+    const content = contentItem.title ? contentItem : contentItem
+    const evaluation = contentItem.evaluation || {}
+
+    const decision = evaluation.decision || 'BOOKMARK'
+    const decisionInfo = decisionMap[decision] || { text: 'Unknown', color: 'gray' }
+
+    // 使用 author_name 或 作者名作为来源名
+    const sourceName = content.author_name || 'Unknown Source'
+
+    return {
+      id: content.id,
+      author: sourceName,
+      authorTime: formatTimeAgo(content.published_at || new Date().toISOString()),
+      title: content.title,
+      content: content.clean_content || content.content || '',
+      url: content.original_url || content.url || '',
+      status: decisionInfo.text,
+      statusColor: decisionInfo.color,
+      // 评估数据
+      innovationScore: evaluation.innovation_score || 0,
+      depthScore: evaluation.depth_score || 0,
+      tldr: evaluation.tldr || content.title,
+      keyConepts: evaluation.key_concepts || [],
+      decision: decision,
+      reasoning: evaluation.reasoning || '',
+      publishedAt: content.published_at,
+      sourceId: content.source_id,
+    }
+  }
+
+  /**
+   * 格式化时间为相对时间（如 "2h ago"）
+   */
+  const formatTimeAgo = (dateString) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffMs = now - date
+    const diffMins = Math.floor(diffMs / 60000)
+    const diffHours = Math.floor(diffMs / 3600000)
+    const diffDays = Math.floor(diffMs / 86400000)
+
+    if (diffMins < 1) return 'just now'
+    if (diffMins < 60) return `${diffMins}m ago`
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+
+    return date.toLocaleDateString()
+  }
+
+  /**
+   * 从 API 加载已评估的内容
+   * GET /api/content?status=EVALUATED
+   */
+  const loadContent = async () => {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/content?status=EVALUATED&limit=500`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      const contentList = data.data || []
+
+      // 转换为 UI 卡片格式
+      cards.value = contentList.map(transformContentToCard)
+
+      if (cards.value.length === 0) {
+        console.info('[Timeline] No evaluated content available, displaying mock data')
+      } else {
+        console.info(`[Timeline] Loaded ${cards.value.length} evaluated content items`)
+      }
+    } catch (err) {
+      error.value = err.message
+      console.error('[Timeline] Failed to load content:', err)
+      // 降级：使用空数组而不是 mock 数据
+      cards.value = []
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
+   * 加载 RSS 抓取进度统计（新增）
+   * GET /api/content/stats
+   */
+  const loadStats = async () => {
+    isLoadingStats.value = true
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/content/stats`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      stats.value = {
+        pending: data.pending || 0,
+        processing: data.processing || 0,
+        evaluated: data.evaluated || 0,
+        discarded: data.discarded || 0,
+        total: data.total || 0
+      }
+
+      console.info(`[Timeline] Stats loaded: ${stats.value.pending} pending, ${stats.value.processing} processing, ${stats.value.evaluated} evaluated`)
+    } catch (err) {
+      console.error('[Timeline] Failed to load stats:', err)
+    } finally {
+      isLoadingStats.value = false
+    }
+  }
+
+  /**
+   * 刷新内容列表
+   */
+  const refreshContent = async () => {
+    await loadContent()
+  }
+
+  /**
+   * 设置过滤器
+   * TODO: 在 API 支持后添加过滤参数
+   */
+  const setFilter = (filter) => {
+    activeFilter.value = filter
+    // 当前版本加载所有 EVALUATED 内容
+    // 后续可扩展为：
+    // - filter = 'Interesting' → decision=INTERESTING
+    // - filter = 'Bookmark' → decision=BOOKMARK
+    // - filter = 'Skip' → decision=SKIP
+  }
+
+  /**
+   * 打开详情抽屉
+   */
   const openDetailDrawer = (card) => {
     selectedCard.value = card
     isDetailDrawerOpen.value = true
   }
 
-  // 关闭详情抽屉
+  /**
+   * 关闭详情抽屉
+   */
   const closeDetailDrawer = () => {
     isDetailDrawerOpen.value = false
     selectedCard.value = null
+  }
+
+  /**
+   * 计算过滤后的卡片列表
+   */
+  const filteredCards = computed(() => {
+    if (activeFilter.value === 'All') {
+      return cards.value
+    }
+    return cards.value.filter(card => card.status === activeFilter.value)
+  })
+
+  /**
+   * 初始化：页面加载时自动获取内容和进度
+   */
+  const initialize = async () => {
+    // 并行加载内容和统计
+    await Promise.all([
+      loadContent(),
+      loadStats()
+    ])
+
+    // ✨ 定时刷新统计信息（每 3 秒）
+    setInterval(loadStats, 3000)
   }
 
   return {
@@ -67,8 +232,17 @@ export const useTimelineStore = defineStore('timeline', () => {
     isDetailDrawerOpen,
     selectedCard,
     cards,
+    filteredCards,
+    isLoading,
+    error,
+    stats,           // ✨ 导出统计信息
+    isLoadingStats,  // ✨ 导出加载状态
     setFilter,
     openDetailDrawer,
     closeDetailDrawer,
+    loadContent,
+    loadStats,       // ✨ 导出加载统计方法
+    refreshContent,
+    initialize,
   }
 })

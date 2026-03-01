@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
 	"strconv"
@@ -51,7 +52,67 @@ func (ch *ContentHandler) GetContent(c *gin.Context) {
 	c.JSON(http.StatusOK, content.ToResponse())
 }
 
-// ListContent lists content with filtering
+// GetContentStats 获取内容统计信息（RSS 抓取进度）
+func (ch *ContentHandler) GetContentStats(c *gin.Context) {
+	// 从上下文获取数据库连接
+	dbInterface, exists := c.Get("db")
+	if !exists {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "database not available"})
+		return
+	}
+
+	db, ok := dbInterface.(*sql.DB)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid database connection"})
+		return
+	}
+
+	// 查询各状态的数量
+	type StatsResult struct {
+		Status string `db:"status"`
+		Count  int    `db:"count"`
+	}
+
+	query := `
+		SELECT status, COUNT(*) as count
+		FROM content
+		GROUP BY status
+	`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		log.Printf("Error querying content stats: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get stats"})
+		return
+	}
+	defer rows.Close()
+
+	stats := map[string]int{
+		"PENDING":    0,
+		"PROCESSING": 0,
+		"EVALUATED":  0,
+		"DISCARDED":  0,
+	}
+
+	for rows.Next() {
+		var status string
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			continue
+		}
+		stats[status] = count
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"pending":    stats["PENDING"],
+		"processing": stats["PROCESSING"],
+		"evaluated":  stats["EVALUATED"],
+		"discarded":  stats["DISCARDED"],
+		"total":      stats["PENDING"] + stats["PROCESSING"] + stats["EVALUATED"] + stats["DISCARDED"],
+	})
+}
+
+// ListContent lists content with optional filtering
 func (ch *ContentHandler) ListContent(c *gin.Context) {
 	filter := &models.ContentFilter{
 		Status:   c.Query("status"),
@@ -84,12 +145,32 @@ func (ch *ContentHandler) ListContent(c *gin.Context) {
 		return
 	}
 
-	responses := make([]*models.ContentResponse, len(contents))
-	for i, cont := range contents {
-		responses[i] = cont.ToResponse()
+	// Build responses with evaluation data if available
+	type ContentWithEvaluation struct {
+		*models.ContentResponse `json:"*"`
+		Evaluation              *models.EvaluationResponse `json:"evaluation,omitempty"`
+		SourceName              string                      `json:"source_name,omitempty"`
 	}
 
-	c.JSON(http.StatusOK, responses)
+	responses := make([]*ContentWithEvaluation, len(contents))
+	for i, cont := range contents {
+		// Get evaluation if exists
+		evaluation, err := ch.evaluationRepo.GetByContentID(c.Request.Context(), cont.ID)
+		response := &ContentWithEvaluation{
+			ContentResponse: cont.ToResponse(),
+		}
+
+		if err == nil && evaluation != nil {
+			response.Evaluation = evaluation.ToResponse()
+		}
+
+		responses[i] = response
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  responses,
+		"count": len(responses),
+	})
 }
 
 // GetContentWithEvaluation retrieves content along with its evaluation

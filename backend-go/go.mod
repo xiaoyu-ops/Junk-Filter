@@ -4,6 +4,8 @@ go 1.21
 
 replace (
 	github.com/junkfilter/backend-go/handlers => ./handlers
+	github.com/junkfilter/backend-go/internal/models => ./internal/models
+	github.com/junkfilter/backend-go/internal/repository => ./internal/repository
 	github.com/junkfilter/backend-go/models => ./models
 	github.com/junkfilter/backend-go/repositories => ./repositories
 	github.com/junkfilter/backend-go/services => ./services

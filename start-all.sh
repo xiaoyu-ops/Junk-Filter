@@ -1,176 +1,201 @@
 #!/bin/bash
-# TrueSignal 一键启动脚本 (Linux/Mac)
-# 启动所有服务：Docker (PostgreSQL + Redis) + Go 后端 + Python 后端 + Vue 前端
+
+# TrueSignal Complete Startup Script (Linux/Mac)
+# Start in correct order: Docker - Go Backend - Python Backend - Frontend
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# 颜色定义
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
-
-# 日志函数
-log_info() {
-    echo -e "${CYAN}[INFO]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
-}
-
-log_error() {
-    echo -e "${RED}[✗]${NC} $1"
-}
-
-# 清屏
-clear
-
 echo ""
 echo "========================================"
-echo "TrueSignal 一键启动脚本"
+echo "    TrueSignal All Services Startup"
+echo "    System: Linux/Mac"
 echo "========================================"
 echo ""
 
-# 检查前置条件
-log_info "检查前置环境..."
+# Check if in project root directory
+if [ ! -f "docker-compose.yml" ]; then
+    echo "[ERROR] Please run this script from TrueSignal project root directory"
+    exit 1
+fi
 
+# ========== Phase 1: Start Docker ==========
+echo ""
+echo "========== Phase 1: Starting Docker Containers =========="
+echo ""
+
+echo "[INFO] Checking Docker status..."
 if ! command -v docker &> /dev/null; then
-    log_error "Docker 未安装"
+    echo "[ERROR] Docker is not installed or not in PATH"
     exit 1
 fi
-log_success "Docker 已安装"
 
-if ! command -v docker-compose &> /dev/null; then
-    log_error "docker-compose 未安装"
+echo "[INFO] Stopping old containers..."
+docker-compose down 2>/dev/null || true
+
+echo "[INFO] Starting Docker containers..."
+docker-compose up -d
+
+if [ $? -ne 0 ]; then
+    echo "[ERROR] Docker startup failed"
     exit 1
 fi
-log_success "docker-compose 已安装"
 
-if ! command -v go &> /dev/null; then
-    log_error "Go 未安装"
-    exit 1
-fi
-log_success "Go 已安装"
-
-if ! command -v node &> /dev/null; then
-    log_error "Node.js 未安装"
-    exit 1
-fi
-log_success "Node.js 已安装"
-
-# 1. Docker & Database
-echo ""
-log_info "启动 Docker 容器 (PostgreSQL + Redis)..."
-
-if docker-compose ps 2>/dev/null | grep -q "Up"; then
-    log_success "Docker 容器已运行"
-else
-    log_warning "启动容器中..."
-    docker-compose down -v 2>/dev/null || true
-    docker-compose up -d
-    log_warning "等待数据库初始化 (15 秒)..."
-    sleep 15
-    log_success "Docker 容器已启动"
-fi
-
-# 2. Go Backend
-echo ""
-log_info "启动 Go 后端 (localhost:8080)..."
-
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    open -a Terminal "$SCRIPT_DIR/backend-go" --args "cd '$SCRIPT_DIR/backend-go' && go run main.go"
-else
-    # Linux
-    gnome-terminal -- bash -c "cd '$SCRIPT_DIR/backend-go' && go run main.go" 2>/dev/null || \
-    xterm -e "cd '$SCRIPT_DIR/backend-go' && go run main.go" &
-fi
-
-log_success "Go 后端启动命令已发送"
+echo "[SUCCESS] Docker containers started"
 sleep 3
 
-# 3. Python Backend
+# ========== Phase 2: Start Go Backend ==========
 echo ""
-log_info "启动 Python 后端 (localhost:8081)..."
+echo "========== Phase 2: Starting Go Backend (Port 8080) =========="
+echo ""
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    open -a Terminal --args "bash -c 'cd \"$SCRIPT_DIR/backend-python\" && conda activate junkfilter && python api_server.py'"
-else
-    # Linux
-    gnome-terminal -- bash -c "cd '$SCRIPT_DIR/backend-python' && conda activate junkfilter && python api_server.py" 2>/dev/null || \
-    xterm -e "cd '$SCRIPT_DIR/backend-python' && conda activate junkfilter && python api_server.py" &
+if [ ! -f "backend-go/main.go" ]; then
+    echo "[ERROR] backend-go/main.go not found"
+    exit 1
 fi
 
-log_success "Python 后端启动命令已发送"
-sleep 3
+echo "[INFO] Starting Go backend..."
+cd backend-go
 
-# 4. Vue Frontend
-echo ""
-log_info "启动 Vue 前端 (localhost:5173)..."
+# Start Go in background
+go run main.go &
+GO_PID=$!
 
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    open -a Terminal --args "bash -c 'cd \"$SCRIPT_DIR/frontend-vue\" && npm run dev'"
-else
-    # Linux
-    gnome-terminal -- bash -c "cd '$SCRIPT_DIR/frontend-vue' && npm run dev" 2>/dev/null || \
-    xterm -e "cd '$SCRIPT_DIR/frontend-vue' && npm run dev" &
+cd ..
+
+echo "[INFO] Waiting for Go backend to start..."
+attempt=0
+while [ $attempt -lt 30 ]; do
+    sleep 1
+    if curl -s http://localhost:8080/health > /dev/null 2>&1; then
+        break
+    fi
+    attempt=$((attempt + 1))
+done
+
+if [ $attempt -eq 30 ]; then
+    echo "[ERROR] Go backend startup timeout"
+    kill $GO_PID 2>/dev/null || true
+    exit 1
 fi
 
-log_success "Vue 前端启动命令已发送"
-sleep 3
+echo "[SUCCESS] Go backend started (Port 8080)"
 
-# 验证和摘要
+# ========== Phase 3: Optional Python Backend ==========
+if [ -f "backend-python/main.py" ]; then
+    echo ""
+    echo "========== Phase 3: Starting Python Backend (Port 8081) =========="
+    echo ""
+
+    echo "[INFO] Starting Python backend with conda junkfilter environment..."
+    cd backend-python
+
+    # Activate conda junkfilter environment and run Python backend in background
+    (
+        # Need to initialize conda first (for non-interactive shells)
+        eval "$(conda shell.bash hook)"
+        conda activate junkfilter
+        python main.py
+    ) &
+
+    cd ..
+
+    echo "[INFO] Python backend started in background"
+else
+    echo ""
+    echo "[INFO] backend-python/main.py not found, skipping Python backend"
+fi
+
+# ========== Phase 4: Verify Services ==========
 echo ""
-log_warning "等待服务初始化 (5 秒)..."
-sleep 5
+echo "========== Verifying Services =========="
+echo ""
 
+echo "[CHECK] PostgreSQL..."
+if docker exec truesignal-db psql -U truesignal -d truesignal -c "SELECT 1" > /dev/null 2>&1; then
+    echo "[SUCCESS] PostgreSQL is running"
+else
+    echo "[WARNING] PostgreSQL connection failed"
+fi
+
+echo "[CHECK] Redis..."
+if docker exec truesignal-redis redis-cli ping > /dev/null 2>&1; then
+    echo "[SUCCESS] Redis is running"
+else
+    echo "[WARNING] Redis connection failed"
+fi
+
+echo "[CHECK] Go Backend..."
+if curl -s http://localhost:8080/health > /dev/null 2>&1; then
+    echo "[SUCCESS] Go backend is running (Port 8080)"
+else
+    echo "[WARNING] Go backend is not responding"
+fi
+
+# ========== Phase 5: Start Frontend ==========
+echo ""
+echo "========== Phase 5: Starting Vue Frontend (Port 5173) =========="
+echo ""
+
+if [ ! -f "frontend-vue/package.json" ]; then
+    echo "[ERROR] frontend-vue/package.json not found"
+    exit 1
+fi
+
+echo "[INFO] Checking frontend dependencies..."
+cd frontend-vue
+
+# Check if node_modules exists
+if [ ! -d "node_modules" ]; then
+    echo "[INFO] Installing npm dependencies..."
+    npm install
+    if [ $? -ne 0 ]; then
+        echo "[ERROR] npm install failed"
+        exit 1
+    fi
+fi
+
+# Start frontend in background
+echo "[INFO] Starting Vue development server..."
+npm run dev &
+
+cd ..
+
+echo "[INFO] Waiting for frontend to start (10 seconds)..."
+sleep 10
+
+# ========== Summary ==========
 echo ""
 echo "========================================"
-log_success "所有服务已启动！"
+echo "            Startup Summary"
 echo "========================================"
 echo ""
 
-echo "📍 访问地址："
-echo "   • 前端应用:      http://localhost:5173"
-echo "   • Go 后端 API:   http://localhost:8080/health"
-echo "   • Python 后端:   http://localhost:8081/health"
+echo "[COMPLETE] All services have started!"
+echo ""
+echo "Services Running:"
+echo "  * Docker:        PostgreSQL + Redis (Port 5432, 6379)"
+echo "  * Go Backend:    http://localhost:8080/api (Port 8080)"
+echo "  * Python:        http://localhost:8081 (Port 8081, optional)"
+echo "  * Vue Frontend:  http://localhost:5173 (Port 5173)"
+echo ""
+echo "Next Steps:"
+echo "  1. Open browser: http://localhost:5173"
+echo "  2. You should see the TrueSignal application"
+echo "  3. Test API: Run bash smoke_test.sh in new terminal"
+echo ""
+echo "Quick Commands:"
+echo "  * Test API:     bash smoke_test.sh"
+echo "  * View logs:    docker-compose logs -f"
+echo "  * Stop all:     docker-compose down"
+echo ""
+echo ""
+echo "Verification:"
+echo "  * Run tests (in new terminal): bash smoke_test.sh"
+echo "  * Expected result: 8/8 tests pass"
 echo ""
 
-echo "🗄️  数据库连接："
-echo "   • PostgreSQL:    localhost:5432 (user: truesignal / pass: truesignal123)"
-echo "   • Redis:         localhost:6379"
-echo ""
-
-echo "📋 服务说明："
-echo "   • Go Backend (8080):     REST API + 任务聊天网关"
-echo "   • Python Backend (8081): LLM 评估和聊天"
-echo "   • Vue Frontend (5173):   用户界面"
-echo "   • PostgreSQL (5432):     数据存储"
-echo "   • Redis (6379):          缓存和消息队列"
-echo ""
-
-echo "⚠️  使用说明："
-echo "   • 各服务运行在独立的终端窗口中"
-echo "   • 关闭窗口可停止相应服务"
-echo "   • 使用 Ctrl+C 优雅停止服务"
-echo ""
-
-echo "🧪 测试方法："
-echo "   1. 打开浏览器访问 http://localhost:5173"
-echo "   2. 进入任务详情页面"
-echo "   3. 在聊天面板输入消息，测试 Agent 调优功能"
-echo ""
-
-echo "========================================"
-echo ""
+# Keep script running to maintain background services
+wait

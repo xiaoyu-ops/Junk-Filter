@@ -176,6 +176,9 @@ class StreamConsumer:
         success_count = 0
         failure_count = 0
 
+        # ✨ 每次处理批次前，重新加载数据库配置（支持动态更新）
+        await self._reload_llm_config()
+
         for message in messages:
             try:
                 # Use ContentEvaluationAgent to evaluate
@@ -240,6 +243,43 @@ class StreamConsumer:
                 failure_count += 1
 
         return success_count, failure_count
+
+    async def _reload_llm_config(self):
+        """
+        ✨ 重新加载数据库中的 LLM 配置（支持动态更新）
+
+        流程：
+        1. 查询 model_config 表，获取最新启用的配置
+        2. 如果找到配置且 API Key 有效，更新 evaluator_agent
+        3. 如果没有配置，保持现有设置（回退到启动时的配置）
+        """
+        try:
+            from config import load_llm_config_from_db
+
+            db_config = await load_llm_config_from_db(self.db_pool)
+
+            if db_config and db_config.get('api_key'):
+                # 配置有效，重新创建 evaluator_agent
+                new_model = db_config.get('model_name', self.evaluator_agent.model)
+                new_api_key = db_config['api_key']
+                new_api_base = db_config.get('base_url') or os.getenv("LLM_BASE_URL", "https://elysiver.h-e.top/v1")
+
+                # 只在配置变化时重新初始化（避免频繁重建）
+                if (new_model != self.evaluator_agent.model or
+                    new_api_key != getattr(self.evaluator_agent, 'api_key', '')):
+
+                    self.evaluator_agent = ContentEvaluationAgent(
+                        model=new_model,
+                        api_key=new_api_key,
+                        api_base=new_api_base,
+                    )
+                    logger.info(f"[Config] Reloaded LLM config from database: {new_model}")
+            else:
+                logger.debug("[Config] No enabled LLM config in database, using current settings")
+
+        except Exception as e:
+            logger.warning(f"[Config] Error reloading LLM config: {e}")
+            # 配置重载失败，继续使用现有配置（不中断评估）
 
     async def _evaluate_with_agent(self, message: StreamMessage):
         """

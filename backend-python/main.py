@@ -92,6 +92,10 @@ class Application:
         # Initialize Redis
         await Redis.initialize()
 
+        # ✨ 从数据库加载 LLM 配置（新增）
+        from config import initialize_llm_config
+        await initialize_llm_config(Database.get_pool())
+
         # Initialize consumer
         self.consumer = StreamConsumer(
             redis_client=Redis.get_client(),

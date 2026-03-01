@@ -13,7 +13,7 @@
 
         <div class="bg-white dark:bg-[#1F2937] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
           <!-- 加载状态 -->
-          <div v-if="isConfigLoading" class="p-6">
+          <div v-if="configStore.isLoadingSources" class="p-6">
             <SkeletonLoader :count="4" height="64px" />
           </div>
 
@@ -519,8 +519,7 @@ const isModelSubmitting = ref(false)
 const rssErrors = ref({})
 const modelErrors = ref({})
 
-// 配置加载状态
-const isConfigLoading = ref(false)
+// 配置加载状态（使用 store 的状态）
 const configError = ref(null)
 
 // 格式化频率文本
