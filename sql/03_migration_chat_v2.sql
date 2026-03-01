@@ -61,4 +61,4 @@ ORDER BY created_at DESC;
 -- END;
 -- $$ LANGUAGE plpgsql;
 
-GRANT ALL PRIVILEGES ON chat_messages_v TO junkfilter;
+GRANT ALL PRIVILEGES ON chat_messages_v TO truesignal;

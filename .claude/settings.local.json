@@ -101,7 +101,8 @@
       "Bash(cmd /c start-all.bat)",
       "Bash(.truesignal-go.exe)",
       "Bash(truesignal-go.exe)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(ren:*)"
     ]
   }
 }

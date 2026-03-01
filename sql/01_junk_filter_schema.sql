@@ -120,10 +120,11 @@ CREATE TABLE IF NOT EXISTS content_stats (
   avg_relevance_score DECIMAL(5,2),
 
   created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE (blogger_id, stat_date),
-  INDEX idx_stats_blogger (blogger_id),
-  INDEX idx_stats_date (stat_date)
+  UNIQUE (blogger_id, stat_date)
 );
+
+CREATE INDEX IF NOT EXISTS idx_stats_blogger ON content_stats(blogger_id);
+CREATE INDEX IF NOT EXISTS idx_stats_date ON content_stats(stat_date);
 
 -- 7. 任务执行日志表 (Task Execution Log)
 CREATE TABLE IF NOT EXISTS task_logs (
