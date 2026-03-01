@@ -1,11 +1,15 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/junkfilter/backend-go/models"
@@ -34,6 +38,9 @@ func NewAITaskHandler(
 type AICreateTaskRequest struct {
 	Message               string        `json:"message" binding:"required"`
 	ConversationHistory   []ChatMessage `json:"conversation_history"`
+	Sources               []map[string]interface{} `json:"sources"`
+	LLMConfig             map[string]interface{}   `json:"llm_config"`
+	EvalConfig            map[string]interface{}   `json:"eval_config"`
 }
 
 // ChatMessage represents a message in the conversation
@@ -83,7 +90,7 @@ func (ah *AITaskHandler) HandleCreateTaskWithAI(c *gin.Context) {
 	}
 
 	// Step 2: Call Python backend to analyze user input and suggest sources
-	response, err := ah.callPythonAIAnalysis(req.Message, sources, req.ConversationHistory)
+	response, err := ah.callPythonAIAnalysis(req.Message, sources, req.ConversationHistory, req.LLMConfig, req.EvalConfig)
 	if err != nil {
 		log.Printf("[AI Task] Error calling Python AI: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "AI analysis failed"})
@@ -96,20 +103,23 @@ func (ah *AITaskHandler) HandleCreateTaskWithAI(c *gin.Context) {
 }
 
 // callPythonAIAnalysis calls the Python backend to analyze the user input
+// It tries to use real AI analysis, and falls back to local keyword matching if that fails
 func (ah *AITaskHandler) callPythonAIAnalysis(
 	userMessage string,
 	sources []*models.Source,
 	conversationHistory []ChatMessage,
+	llmConfig, evalConfig map[string]interface{},
 ) (*AICreateTaskResponse, error) {
 	// Build source list for Python backend
 	sourceList := make([]map[string]interface{}, len(sources))
 	for i, source := range sources {
 		sourceList[i] = map[string]interface{}{
-			"id":                source.ID,
-			"name":              source.AuthorName,
-			"url":               source.URL,
-			"platform":          source.Platform,
-			"fetch_interval":    source.FetchIntervalSeconds,
+			"id":       source.ID,
+			"url":      source.URL,
+			"author_name": source.AuthorName,
+			"platform": source.Platform,
+			"priority": source.Priority,
+			"enabled":  source.Enabled,
 		}
 	}
 
@@ -122,17 +132,73 @@ func (ah *AITaskHandler) callPythonAIAnalysis(
 		}
 	}
 
-	// TODO: Call Python API in the future
-	// pythonURL := fmt.Sprintf("%s/api/task/ai-create", ah.pythonAPIBaseURL)
-	// payload := map[string]interface{}{
-	// 	"message":                userMessage,
-	// 	"sources":                sourceList,
-	// 	"conversation_history":   history,
-	// }
-	// payloadBytes, _ := json.Marshal(payload)
+	// Try to call Python API
+	pythonURL := fmt.Sprintf("%s/api/task/ai-create", ah.pythonAPIBaseURL)
+	payload := map[string]interface{}{
+		"message":                userMessage,
+		"sources":                sourceList,
+		"conversation_history":   history,
+		"llm_config":             llmConfig,
+		"eval_config":            evalConfig,
+	}
 
-	// For now, we'll do a simple implementation locally
-	return ah.analyzeUserInputLocally(userMessage, sources, conversationHistory)
+	response, err := ah.callPythonAPI(pythonURL, payload)
+	if err != nil {
+		log.Printf("[AI Task] Python API call failed: %v, falling back to local analysis", err)
+		// Fall back to local keyword matching
+		return ah.analyzeUserInputLocally(userMessage, sources, conversationHistory)
+	}
+
+	return response, nil
+}
+
+// callPythonAPI makes an HTTP POST request to the Python backend
+func (ah *AITaskHandler) callPythonAPI(url string, payload map[string]interface{}) (*AICreateTaskResponse, error) {
+	// Marshal payload to JSON
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	// Create HTTP request
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make request with timeout
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call Python API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Python API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Unmarshal response
+	var response AICreateTaskResponse
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
+	}
+
+	log.Printf("[AI Task] Python API call successful: %+v", response)
+	return &response, nil
 }
 
 // analyzeUserInputLocally analyzes user input locally (placeholder implementation)

@@ -664,21 +664,50 @@ export const useAPI = () => {
     /**
      * AI 任务创建助手 - 处理用户的自然语言需求
      * 调用 Go 后端的 POST /api/tasks/ai-create
+     * 使用相同的 LLM 和评估配置作为任务对话
      *
      * @param {string} message - 用户的需求描述
      * @param {array} conversationHistory - 对话历史
+     * @param {array} sources - 可用的 RSS 源列表（如果不提供则使用 API 获取）
+     * @param {object} llmConfig - LLM 配置 {modelName, apiKey, baseUrl}
+     * @param {object} evalConfig - 评估配置 {temperature, topP, maxTokens}
      * @returns {Promise<object>} AI 的回复和任务建议
      */
-    createTaskWithAI: async (message, conversationHistory = []) => {
-      const requestBody = {
-        message: message,
-        conversation_history: conversationHistory.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        }))
-      }
-
+    createTaskWithAI: async (message, conversationHistory = [], sources = null, llmConfig = {}, evalConfig = {}) => {
       try {
+        // 如果没有提供源列表，先从 API 获取
+        if (!sources || sources.length === 0) {
+          const allTasks = await tasks.list()
+          // 将任务转换为源格式
+          sources = allTasks.map(task => ({
+            id: task.id.replace('source-', ''),
+            url: task.command,
+            author_name: task.name,
+            platform: 'rss', // 默认平台
+            priority: 5, // 默认优先级
+            enabled: true
+          }))
+        }
+
+        const requestBody = {
+          message: message,
+          sources: sources || [],
+          conversation_history: conversationHistory.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          })),
+          llm_config: {
+            model_name: llmConfig.modelName,
+            api_key: llmConfig.apiKey,
+            base_url: llmConfig.baseUrl,
+          },
+          eval_config: {
+            temperature: evalConfig.temperature,
+            topP: evalConfig.topP,
+            maxTokens: evalConfig.maxTokens,
+          },
+        }
+
         const response = await request('/api/tasks/ai-create', {
           baseUrl: apiUrl,
           method: 'POST',

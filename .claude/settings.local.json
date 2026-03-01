@@ -110,7 +110,11 @@
       "Bash(cmd /c \"taskkill /PID 29240 /F\")",
       "Bash(cmd /c \"netstat -ano | find \"\":8080\"\"\")",
       "Bash(xargs:*)",
-      "Bash(ss:*)"
+      "Bash(ss:*)",
+      "Bash(cat:*)",
+      "Bash(verify)",
+      "Bash(.bat)",
+      "Bash(.sh \")"
     ]
   }
 }
