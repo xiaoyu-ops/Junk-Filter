@@ -533,7 +533,12 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
 
         client = OpenAI(**client_kwargs)
 
+        # 验证客户端配置
+        logger.info(f"[LLM Call] Client base_url: {client.base_url}")
+        logger.info(f"[LLM Call] Client timeout: {client.timeout}")
+
         # 调用 LLM
+        logger.info(f"[LLM Call] Calling {model_name} at {client.base_url}")
         response = await asyncio.to_thread(
             lambda: client.chat.completions.create(
                 model=model_name,
@@ -545,10 +550,16 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
                 max_tokens=max_tokens,
             )
         )
+        logger.info(f"[LLM Call] Success! Response length: {len(response.choices[0].message.content) if response.choices else 0}")
 
         return response.choices[0].message.content if response.choices else ""
     except Exception as e:
-        logger.error(f"[LLM Call] Full error details: {type(e).__name__}: {str(e)}")
+        logger.error(f"[LLM Call] ❌ Failed to call LLM")
+        logger.error(f"[LLM Call] Error type: {type(e).__name__}")
+        logger.error(f"[LLM Call] Error message: {str(e)}")
+        logger.error(f"[LLM Call] Model was: {model_name}")
+        logger.error(f"[LLM Call] Base URL was: {base_url}")
+        logger.error(f"[LLM Call] API Key prefix: {api_key[:30] if api_key else 'None'}...")
         import traceback
         logger.error(f"[LLM Call] Traceback: {traceback.format_exc()}")
         raise
