@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     llm_model_id: str = ""
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2000
-    llm_timeout: int = 30
+    llm_timeout: int = 60
 
     # FastAPI 服务配置
     api_host: str = "0.0.0.0"
