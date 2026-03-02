@@ -189,7 +189,7 @@ export const useAPI = () => {
      * 调用 Go 后端的 /api/sources，转换为前端的 Task 格式
      */
     list: async () => {
-      const sources = await request('/api/sources', { baseUrl: apiUrl })
+      const sources = await request('/api/sources?enabled=true', { baseUrl: apiUrl })
       return Array.isArray(sources) ? sources.map(adaptSourceToTask) : []
     },
 
