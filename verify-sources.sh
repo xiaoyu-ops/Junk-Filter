@@ -1,58 +1,58 @@
 #!/bin/bash
 
-# Linux/Mac 验证脚本：隐藏默认源 & 添加删除按钮
+# Verify sources hiding feature
 
 echo ""
 echo "========================================"
-echo "  隐藏默认源 & 添加删除按钮 - 验证脚本"
+echo "  Verify Default Sources Hidden"
 echo "========================================"
 echo ""
 
-# 验证 1: 数据库中的源被禁用
-echo "[验证 1] 检查数据库中的源状态..."
+# Check 1: Database sources disabled
+echo "[Check 1] Database sources status..."
 docker exec junkfilter-db psql -U truesignal -d truesignal -c "SELECT id, author_name, enabled FROM sources ORDER BY id;"
 echo ""
-echo "✓ 预期：3 个源，enabled 都是 false"
+echo "Expected: 3 sources with enabled=false"
 echo ""
 
-# 检查容器是否运行
-echo "[验证 2] 检查容器状态..."
+# Check 2: Docker containers
+echo "[Check 2] Docker containers status..."
 docker-compose ps
 echo ""
 
-# 检查 Go 后端是否运行
-echo "[验证 3] 尝试连接 Go 后端 (http://localhost:8080)..."
+# Check 3: Go backend connection
+echo "[Check 3] Try connecting to Go backend (http://localhost:8080)..."
 sleep 2
 curl -s -o /dev/null -w "HTTP Status: %{http_code}\n" http://localhost:8080/api/sources
 
 if [ $? -ne 0 ]; then
     echo ""
-    echo "⚠ Go 后端未运行或无法连接"
-    echo "  请启动 Go 后端: cd backend-go && go run main.go"
+    echo "WARNING: Go backend not running"
+    echo "Please start Go backend: cd backend-go && go run main.go"
     echo ""
 else
     echo ""
-    echo "✓ Go 后端已运行"
+    echo "OK: Go backend is running"
     echo ""
-    echo "[验证 4] 获取 /api/sources 端点响应..."
+    echo "[Check 4] API /api/sources response..."
     curl -s http://localhost:8080/api/sources
     echo ""
     echo ""
-    echo "✓ 预期：[] 或 { \"data\": [] }（空列表）"
+    echo "Expected: empty array [] or { \"data\": [] }"
     echo ""
 fi
 
-# 前端验证提示
-echo "[验证 5] 前端验证（需要手动操作）"
+# Frontend check
+echo "[Check 5] Frontend verification (manual)"
 echo ""
-echo "  1. 启动前端: cd frontend-vue && npm run dev"
-echo "  2. 打开浏览器: http://localhost:5173"
-echo "  3. 验证：右侧侧边栏显示\"还没有任务\""
-echo "  4. 创建任务：点击\"添加任务\"按钮"
-echo "  5. 验证删除功能：选中任务后，点击红色\"删除\"按钮"
+echo "  1. Start frontend: cd frontend-vue && npm run dev"
+echo "  2. Open browser: http://localhost:5173"
+echo "  3. Verify: Right sidebar shows 'No tasks'"
+echo "  4. Create task: Click 'Add Task' button"
+echo "  5. Test delete: Select task, click red 'Delete' button"
 echo ""
 
 echo "========================================"
-echo "  验证完成！"
+echo "  Verification Complete!"
 echo "========================================"
 echo ""
