@@ -74,6 +74,15 @@
               <span class="material-icons-outlined text-sm">history</span>
               <span>历史</span>
             </button>
+
+            <!-- 删除按钮 -->
+            <button
+              @click.stop="handleDeleteTask(task.id)"
+              class="flex-1 px-3 py-2 rounded-md bg-red-600 hover:bg-red-700 active:scale-95 text-white text-xs font-medium transition-colors flex items-center justify-center gap-1"
+            >
+              <span class="material-icons-outlined text-sm">delete_outline</span>
+              <span>删除</span>
+            </button>
           </div>
 
           <!-- 执行进度条（仅执行中时显示） -->
@@ -175,6 +184,29 @@ const handleOpenHistory = async (taskId) => {
  */
 const handleOpenAIAssistant = () => {
   taskStore.openAIAssistantModal()
+}
+
+/**
+ * 处理任务删除
+ */
+const handleDeleteTask = async (taskId) => {
+  if (confirm('确定要删除这个任务吗？此操作不可撤销。')) {
+    try {
+      await taskStore.deleteTask(taskId)
+      showToast({
+        message: '任务已删除',
+        type: 'success',
+        duration: 2000
+      })
+    } catch (error) {
+      console.error('删除任务出错:', error)
+      showToast({
+        message: '删除失败，请重试',
+        type: 'error',
+        duration: 3000
+      })
+    }
+  }
 }
 </script>
 

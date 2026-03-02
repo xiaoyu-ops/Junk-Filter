@@ -107,11 +107,11 @@ CREATE INDEX idx_messages_task_id ON messages(task_id);
 CREATE INDEX idx_messages_created_at ON messages(created_at DESC);
 CREATE INDEX idx_messages_role ON messages(role);
 
--- Demo 初始数据：添加几个测试源
+-- Demo 初始数据：添加几个测试源（默认禁用，保留在数据库供后续使用）
 INSERT INTO sources (url, author_name, priority, enabled) VALUES
-  ('https://feeds.arstechnica.com/arstechnica/index', 'Ars Technica', 8, TRUE),
-  ('https://news.ycombinator.com/rss', 'Hacker News', 9, TRUE),
-  ('https://feeds.medium.com/tag/technology/latest', 'Medium Tech', 7, TRUE)
+  ('https://feeds.arstechnica.com/arstechnica/index', 'Ars Technica', 8, FALSE),
+  ('https://news.ycombinator.com/rss', 'Hacker News', 9, FALSE),
+  ('https://feeds.medium.com/tag/technology/latest', 'Medium Tech', 7, FALSE)
 ON CONFLICT (url) DO NOTHING;
 
 -- Grant permissions
