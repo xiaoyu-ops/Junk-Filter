@@ -115,7 +115,12 @@
       "Bash(verify)",
       "Bash(.bat)",
       "Bash(.sh \")",
-      "Bash(verify-sources.bat)"
+      "Bash(verify-sources.bat)",
+      "Bash(for:*)",
+      "Bash(do echo \"$f\")",
+      "Bash(done)",
+      "Bash(mv:*)",
+      "Bash(mv phase1-go-refactoring:*)"
     ]
   }
 }
