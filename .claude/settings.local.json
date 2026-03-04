@@ -120,7 +120,8 @@
       "Bash(do echo \"$f\")",
       "Bash(done)",
       "Bash(mv:*)",
-      "Bash(mv phase1-go-refactoring:*)"
+      "Bash(mv phase1-go-refactoring:*)",
+      "Bash(powershell:*)"
     ]
   }
 }

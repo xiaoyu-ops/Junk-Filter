@@ -62,9 +62,9 @@ func Load() *Config {
 func (c *Config) setDefaults() {
 	c.Database.Host = "localhost"
 	c.Database.Port = 5432
-	c.Database.User = "truesignal"
-	c.Database.Password = "truesignal123"
-	c.Database.DBName = "truesignal"
+	c.Database.User = "junkfilter"
+	c.Database.Password = "junkfilter123"
+	c.Database.DBName = "junkfilter"
 	c.Database.SSLMode = "disable"
 	c.Database.MaxOpenConns = 50   // P0: 优化值
 	c.Database.MaxIdleConns = 10   // P0: 优化值

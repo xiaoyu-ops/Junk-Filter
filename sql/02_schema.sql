@@ -115,5 +115,5 @@ INSERT INTO sources (url, author_name, priority, enabled) VALUES
 ON CONFLICT (url) DO NOTHING;
 
 -- Grant permissions
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO truesignal;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO truesignal;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO junkfilter;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO junkfilter;

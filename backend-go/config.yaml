@@ -5,9 +5,9 @@
 database:
   host: localhost
   port: 5432
-  user: truesignal
-  password: truesignal123
-  dbname: truesignal
+  user: junkfilter
+  password: junkfilter123
+  dbname: junkfilter
   sslmode: disable
   max_open_conns: 50        # ← P0: 从 20 改为 50 (支持 1K+ 源)
   max_idle_conns: 10        # ← P0: 新增 (防止连接泄漏)

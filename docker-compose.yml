@@ -6,9 +6,9 @@ services:
     image: postgres:15-alpine
     container_name: junkfilter-db
     environment:
-      POSTGRES_USER: ${DB_USER:-truesignal}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-truesignal123}
-      POSTGRES_DB: ${DB_NAME:-truesignal}
+      POSTGRES_USER: ${DB_USER:-junkfilter}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-junkfilter123}
+      POSTGRES_DB: ${DB_NAME:-junkfilter}
     ports:
       - "5432:5432"
     volumes:
@@ -17,7 +17,7 @@ services:
     networks:
       - junkfilter-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-truesignal}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-junkfilter}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,7 +26,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: junkfilter-redis
-    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_default_password_change_me}
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
     volumes:
@@ -34,7 +34,7 @@ services:
     networks:
       - junkfilter-network
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_default_password_change_me}", "ping"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,10 +46,10 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-truesignal}
-      DB_PASSWORD: ${DB_PASSWORD:-truesignal123}
-      DB_NAME: ${DB_NAME:-truesignal}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_default_password_change_me}@redis:6379/0
+      DB_USER: ${DB_USER:-junkfilter}
+      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
+      DB_NAME: ${DB_NAME:-junkfilter}
+      REDIS_URL: redis://redis:6379/0
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_MODEL_ID: ${LLM_MODEL_ID}
@@ -76,10 +76,10 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-truesignal}
-      DB_PASSWORD: ${DB_PASSWORD:-truesignal123}
-      DB_NAME: ${DB_NAME:-truesignal}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_default_password_change_me}@redis:6379/0
+      DB_USER: ${DB_USER:-junkfilter}
+      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
+      DB_NAME: ${DB_NAME:-junkfilter}
+      REDIS_URL: redis://redis:6379/0
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_MODEL_ID: ${LLM_MODEL_ID}
@@ -106,10 +106,10 @@ services:
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_USER: ${DB_USER:-truesignal}
-      DB_PASSWORD: ${DB_PASSWORD:-truesignal123}
-      DB_NAME: ${DB_NAME:-truesignal}
-      REDIS_URL: redis://:${REDIS_PASSWORD:-redis_default_password_change_me}@redis:6379/0
+      DB_USER: ${DB_USER:-junkfilter}
+      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
+      DB_NAME: ${DB_NAME:-junkfilter}
+      REDIS_URL: redis://redis:6379/0
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_MODEL_ID: ${LLM_MODEL_ID}

@@ -311,10 +311,8 @@ export const useAPI = () => {
      * 调用 Go 后端的 /api/tasks/{id}/messages (POST)
      */
     save: async (taskId, messageData) => {
-      // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
+      if (!taskId) throw new Error('taskId is required')
       const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
-
-      // 确保必需字段存在
       const payload = {
         role: messageData.role || 'user',
         type: messageData.type || 'text',
@@ -513,6 +511,7 @@ export const useAPI = () => {
       }
 
       // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
+      if (!taskId) throw new Error('taskId is required')
       const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
 
       const url = `${apiUrl}/api/tasks/${actualTaskId}/chat`

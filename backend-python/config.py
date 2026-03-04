@@ -42,9 +42,9 @@ class Settings(BaseSettings):
     # 数据库配置 (P0 优化)
     db_host: str = "localhost"
     db_port: int = 5432
-    db_user: str = "truesignal"
-    db_password: str = "truesignal123"
-    db_name: str = "truesignal"
+    db_user: str = "junkfilter"
+    db_password: str = "junkfilter123"
+    db_name: str = "junkfilter"
     db_pool_min_size: int = 10
     db_pool_max_size: int = 100  # ← P0: 从 20 改为 100 (支持更多并发)
 
