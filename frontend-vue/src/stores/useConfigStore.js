@@ -141,16 +141,13 @@ export const useConfigStore = defineStore('config', () => {
   }
 
   /**
-   * 保存配置到 localStorage
+   * 保存配置到 localStorage 并同步到后端数据库
    */
   const saveConfig = async () => {
     isSaving.value = true
     saveStatus.value = null
 
     try {
-      // 模拟API请求延迟
-      await new Promise(resolve => setTimeout(resolve, 500))
-
       // 保存到localStorage
       localStorage.setItem('config', JSON.stringify({
         apiKey: apiKey.value,
@@ -160,6 +157,20 @@ export const useConfigStore = defineStore('config', () => {
         topP: topP.value,
         maxTokens: maxTokens.value,
       }))
+
+      // 同步到后端数据库（供 stream_consumer 使用）
+      await fetch(`${API_BASE_URL}/config/llm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          api_key: apiKey.value,
+          model_name: modelName.value,
+          base_url: baseUrl.value,
+          temperature: temperature.value,
+          max_tokens: maxTokens.value,
+        }),
+      })
+
       saveStatus.value = 'success'
       return true
     } catch (error) {

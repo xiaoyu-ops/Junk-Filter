@@ -37,9 +37,10 @@ func NewRSSService(
 	workerCount int,
 	fetchTimeout time.Duration,
 	maxRetries int,
+	proxyURL string,
 ) *RSSService {
 	return &RSSService{
-		parser:         utils.NewRSSParser(),
+		parser:         utils.NewRSSParser(proxyURL),
 		sourceRepo:     sourceRepo,
 		contentRepo:    contentRepo,
 		dedupService:   NewDedupService(redis, contentRepo),
@@ -114,12 +115,18 @@ func (rs *RSSService) fetchAllSources(ctx context.Context) {
 		return
 	}
 
-	// Worker pool pattern
+	// Worker pool pattern - use a local WaitGroup to avoid race with rs.wg
 	sourceChan := make(chan *models.Source, len(toFetch))
-	rs.wg.Add(rs.workerCount)
+	var localWg sync.WaitGroup
+	localWg.Add(rs.workerCount)
 
 	for i := 0; i < rs.workerCount; i++ {
-		go rs.fetchWorker(ctx, sourceChan)
+		go func() {
+			defer localWg.Done()
+			for source := range sourceChan {
+				rs.fetchSource(ctx, source)
+			}
+		}()
 	}
 
 	for _, source := range toFetch {
@@ -127,7 +134,7 @@ func (rs *RSSService) fetchAllSources(ctx context.Context) {
 	}
 	close(sourceChan)
 
-	rs.wg.Wait()
+	localWg.Wait()
 }
 
 func (rs *RSSService) filterSourcesToFetch(sources []*models.Source) []*models.Source {
@@ -146,14 +153,6 @@ func (rs *RSSService) filterSourcesToFetch(sources []*models.Source) []*models.S
 	return toFetch
 }
 
-func (rs *RSSService) fetchWorker(ctx context.Context, sourceChan chan *models.Source) {
-	defer rs.wg.Done()
-
-	for source := range sourceChan {
-		rs.fetchSource(ctx, source)
-	}
-}
-
 func (rs *RSSService) fetchSource(ctx context.Context, source *models.Source) {
 	// Create a timeout context for this fetch
 	fetchCtx, cancel := context.WithTimeout(ctx, rs.fetchTimeout)
@@ -161,6 +160,10 @@ func (rs *RSSService) fetchSource(ctx context.Context, source *models.Source) {
 
 	var lastErr error
 	for attempt := 1; attempt <= rs.maxRetries; attempt++ {
+		if attempt > 1 {
+			backoff := time.Duration(attempt-1) * 2 * time.Second
+			time.Sleep(backoff)
+		}
 		items, err := rs.parser.ParseFeed(source.URL)
 		if err != nil {
 			lastErr = err
@@ -203,10 +206,16 @@ func (rs *RSSService) processItem(ctx context.Context, source *models.Source, it
 	}
 
 	// Create content record
+	// Use item author, fallback to source author name
+	authorName := item.Author
+	if authorName == "" {
+		authorName = source.AuthorName
+	}
+
 	req := &models.CreateContentRequest{
 		SourceID:     source.ID,
 		Platform:     source.Platform,
-		AuthorName:   item.Author,
+		AuthorName:   authorName,
 		Title:        item.Title,
 		OriginalURL:  item.URL,
 		ContentHash:  contentHash,
@@ -229,8 +238,9 @@ func (rs *RSSService) processItem(ctx context.Context, source *models.Source, it
 	// Publish to Stream
 	if err := rs.contentService.PublishToStream(ctx, content); err != nil {
 		log.Printf("Error publishing to stream: %v", err)
-		// Update status to PROCESSING
-		rs.contentRepo.UpdateStatus(ctx, content.ID, "PROCESSING")
+		// Keep status as PENDING so it can be retried
+		rs.contentRepo.UpdateStatus(ctx, content.ID, "PENDING")
+		return
 	}
 
 	log.Printf("Ingested: %s (ID: %d)", item.Title, content.ID)

@@ -56,6 +56,7 @@ type Config struct {
 		Timeout       string `yaml:"timeout"`
 		RetryMax      int    `yaml:"retry_max"`
 		FetchInterval string `yaml:"fetch_interval"`
+		ProxyURL      string `yaml:"proxy_url"`
 	} `yaml:"ingestion"`
 }
 
@@ -117,6 +118,7 @@ func main() {
 		cfg.Ingestion.WorkerCount,
 		parseFetchTimeout,
 		cfg.Ingestion.RetryMax,
+		cfg.Ingestion.ProxyURL,
 	)
 
 	// 保存到全局上下文
@@ -134,6 +136,11 @@ func main() {
 	log.Println("\n========== JunkFilter Backend ==========")
 	log.Printf("Database: %s:%d/%s\n", cfg.Database.Host, cfg.Database.Port, cfg.Database.DBName)
 	log.Printf("Redis: %s:%d\n", cfg.Redis.Host, cfg.Redis.Port)
+	if cfg.Ingestion.ProxyURL != "" {
+		log.Printf("RSS Proxy: %s\n", cfg.Ingestion.ProxyURL)
+	} else {
+		log.Println("RSS Proxy: disabled (set RSS_PROXY_URL to enable)")
+	}
 	log.Printf("Server: listening on :%d\n", cfg.Server.Port)
 	log.Println("========================================\n")
 
@@ -177,7 +184,7 @@ func loadConfig() *Config {
 	cfg.Redis.DB = 0
 	cfg.Redis.Password = ""
 	cfg.Server.Port = 8080
-	cfg.PythonAPI.URL = "http://localhost:8081"  // P1-4: Python API 默认地址
+	cfg.PythonAPI.URL = "http://localhost:8083"  // P1-4: Python API 默认地址
 	cfg.Ingestion.WorkerCount = 5
 	cfg.Ingestion.Timeout = "10s"
 	cfg.Ingestion.RetryMax = 3
@@ -221,6 +228,9 @@ func loadConfig() *Config {
 	}
 	if pythonAPI := os.Getenv("PYTHON_API_URL"); pythonAPI != "" {
 		cfg.PythonAPI.URL = pythonAPI
+	}
+	if proxyURL := os.Getenv("RSS_PROXY_URL"); proxyURL != "" {
+		cfg.Ingestion.ProxyURL = proxyURL
 	}
 
 	// CORS 环境变量覆盖
@@ -318,7 +328,7 @@ func startServer(port int) {
 
 	// 注册 handlers
 	sourceHandler := handlers.NewSourceHandler(appCtx.SourceRepo, appCtx.RSSService)
-	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo, appCtx.DB)
+	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo, appCtx.SourceRepo, appCtx.DB)
 	evaluationHandler := handlers.NewEvaluationHandler(appCtx.EvaluationRepo)
 	messageHandler := handlers.NewMessageHandler(appCtx.MessageRepo)
 	chatHandler := handlers.NewChatHandler(appCtx.MessageRepo, appCtx.Config.PythonAPI.URL)
@@ -329,6 +339,7 @@ func startServer(port int) {
 		appCtx.Config.PythonAPI.URL,
 	)
 	aiTaskHandler := handlers.NewAITaskHandler(appCtx.SourceRepo, appCtx.Config.PythonAPI.URL)
+	configHandler := handlers.NewConfigHandler(appCtx.DB)
 
 	// 注册路由
 	handlers.RegisterSourceRoutes(router, sourceHandler)
@@ -338,6 +349,7 @@ func startServer(port int) {
 	handlers.RegisterChatRoutes(router, chatHandler)
 	handlers.RegisterTaskChatRoutes(router, taskChatHandler)
 	handlers.RegisterAITaskRoutes(router, aiTaskHandler)
+	handlers.RegisterConfigRoutes(router, configHandler)
 
 	// 健康检查端点
 	router.GET("/health", func(c *gin.Context) {

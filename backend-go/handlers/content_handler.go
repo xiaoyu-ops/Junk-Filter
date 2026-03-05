@@ -15,6 +15,7 @@ import (
 type ContentHandler struct {
 	contentRepo     *repositories.ContentRepository
 	evaluationRepo  *repositories.EvaluationRepository
+	sourceRepo      *repositories.SourceRepository
 	db              *sql.DB
 }
 
@@ -22,11 +23,13 @@ type ContentHandler struct {
 func NewContentHandler(
 	contentRepo *repositories.ContentRepository,
 	evaluationRepo *repositories.EvaluationRepository,
+	sourceRepo *repositories.SourceRepository,
 	db *sql.DB,
 ) *ContentHandler {
 	return &ContentHandler{
 		contentRepo:    contentRepo,
 		evaluationRepo: evaluationRepo,
+		sourceRepo:     sourceRepo,
 		db:             db,
 	}
 }
@@ -135,11 +138,22 @@ func (ch *ContentHandler) ListContent(c *gin.Context) {
 		return
 	}
 
+	// Build source name cache to avoid N+1 queries
+	sourceNames := make(map[int64]string)
+	for _, cont := range contents {
+		if _, exists := sourceNames[cont.SourceID]; !exists && cont.SourceID > 0 {
+			source, err := ch.sourceRepo.GetByID(c.Request.Context(), cont.SourceID)
+			if err == nil && source != nil {
+				sourceNames[cont.SourceID] = source.AuthorName
+			}
+		}
+	}
+
 	// Build responses with evaluation data if available
 	type ContentWithEvaluation struct {
-		*models.ContentResponse `json:"*"`
-		Evaluation              *models.EvaluationResponse `json:"evaluation,omitempty"`
-		SourceName              string                      `json:"source_name,omitempty"`
+		*models.ContentResponse
+		Evaluation *models.EvaluationResponse `json:"evaluation,omitempty"`
+		SourceName string                     `json:"source_name,omitempty"`
 	}
 
 	responses := make([]*ContentWithEvaluation, len(contents))
@@ -148,6 +162,7 @@ func (ch *ContentHandler) ListContent(c *gin.Context) {
 		evaluation, err := ch.evaluationRepo.GetByContentID(c.Request.Context(), cont.ID)
 		response := &ContentWithEvaluation{
 			ContentResponse: cont.ToResponse(),
+			SourceName:      sourceNames[cont.SourceID],
 		}
 
 		if err == nil && evaluation != nil {

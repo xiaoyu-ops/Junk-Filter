@@ -727,19 +727,23 @@ start-all.bat
 # 方式 2: 使用启动脚本 (Linux/Mac)
 ./start-all.sh
 
-# 方式 3: 手动启动各组件
+# 方式 3: 手动启动各组件（共 5 个终端）
 # 终端 1: Docker 容器
 docker-compose up -d
 
-# 终端 2: Go 后端
+# 终端 2: Go 后端（API 网关 + RSS 抓取，端口 8080）
 cd backend-go
 go run main.go
 
-# 终端 3: Python 评估服务
+# 终端 3: Python API 服务（LLM 评估/聊天接口，端口 8083）
+cd backend-python
+python api_server.py
+
+# 终端 4: Python Stream 消费者（后台自动从 Redis Stream 消费并评估）
 cd backend-python
 python main.py
 
-# 终端 4: 前端
+# 终端 5: 前端（端口 5173）
 cd frontend-vue
 npm run dev
 ```

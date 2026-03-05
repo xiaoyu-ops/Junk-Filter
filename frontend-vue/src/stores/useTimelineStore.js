@@ -41,8 +41,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     const decision = evaluation.decision || 'BOOKMARK'
     const decisionInfo = decisionMap[decision] || { text: 'Unknown', color: 'gray' }
 
-    // 使用 author_name 或 作者名作为来源名
-    const sourceName = content.author_name || 'Unknown Source'
+    // Use author_name from RSS item, fallback to source_name from sources table
+    const sourceName = content.author_name || contentItem.source_name || 'Unknown Source'
 
     return {
       id: content.id,

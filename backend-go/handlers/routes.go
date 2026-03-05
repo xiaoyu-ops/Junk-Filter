@@ -66,8 +66,14 @@ func RegisterTaskChatRoutes(router *gin.Engine, handler *TaskChatHandler) {
 	router.POST("/api/tasks/:id/chat", handler.HandleTaskChat)
 }
 
+// RegisterConfigRoutes registers LLM config routes
+func RegisterConfigRoutes(router *gin.Engine, handler *ConfigHandler) {
+	router.GET("/api/config/llm", handler.GetLLMConfig)
+	router.POST("/api/config/llm", handler.SaveLLMConfig)
+}
+
 // RegisterAITaskRoutes registers AI-powered task creation routes
 func RegisterAITaskRoutes(router *gin.Engine, handler *AITaskHandler) {
-	// POST /api/tasks/ai-create - AI-powered task creation endpoint
 	router.POST("/api/tasks/ai-create", handler.HandleCreateTaskWithAI)
 }
+

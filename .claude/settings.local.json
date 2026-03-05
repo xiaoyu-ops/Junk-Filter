@@ -121,7 +121,11 @@
       "Bash(done)",
       "Bash(mv:*)",
       "Bash(mv phase1-go-refactoring:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(Invoke-RestMethod:*)",
+      "Bash(wget:*)",
+      "Bash(node:*)",
+      "Bash(docker ps:*)"
     ]
   }
 }

@@ -195,7 +195,7 @@ func (sr *SourceRepository) Search(ctx context.Context, query, platform string) 
 
 	// Build query with fuzzy search on author_name and url
 	sqlQuery := `
-		SELECT id, platform, url, author_name, priority,
+		SELECT id, platform, url, author_name, author_id, priority,
 		       fetch_interval_seconds, enabled, last_fetch_time,
 		       created_at, updated_at
 		FROM sources
@@ -219,21 +219,33 @@ func (sr *SourceRepository) Search(ctx context.Context, query, platform string) 
 
 	for rows.Next() {
 		var source models.Source
+		var lastFetchTime sql.NullTime
+		var authorID sql.NullString
+
 		err := rows.Scan(
 			&source.ID,
 			&source.Platform,
 			&source.URL,
 			&source.AuthorName,
+			&authorID,
 			&source.Priority,
 			&source.FetchIntervalSeconds,
 			&source.Enabled,
-			&source.LastFetchTime,
+			&lastFetchTime,
 			&source.CreatedAt,
 			&source.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
+
+		if lastFetchTime.Valid {
+			source.LastFetchTime = &lastFetchTime.Time
+		}
+		if authorID.Valid {
+			source.AuthorID = &authorID.String
+		}
+
 		sources = append(sources, source)
 	}
 

@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2000
     llm_timeout: int = 60
+    llm_request_interval: float = 5.0  # seconds between LLM API calls to avoid rate limiting
 
     # FastAPI 服务配置
     api_host: str = "0.0.0.0"
@@ -100,6 +101,7 @@ async def load_llm_config_from_db(pool: asyncpg.pool.Pool) -> dict:
                 SELECT
                     default_model as model_name,
                     api_key,
+                    base_url,
                     temperature,
                     max_tokens
                 FROM ai_config
@@ -110,6 +112,7 @@ async def load_llm_config_from_db(pool: asyncpg.pool.Pool) -> dict:
                 config = {
                     'model_name': row['model_name'],
                     'api_key': row['api_key'],
+                    'base_url': row['base_url'] or '',
                     'temperature': row['temperature'],
                     'max_tokens': row['max_tokens'],
                 }

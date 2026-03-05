@@ -294,7 +294,9 @@ URL：{state['url']}
                 HumanMessage(content=user_prompt),
             ]
 
+            logger.debug(f"[ContentEvaluator] Sending to LLM:\n{user_prompt[:500]}")
             response = self.llm.invoke(messages)
+            logger.debug(f"[ContentEvaluator] LLM raw response:\n{response.content}")
             state["messages"] = messages + [response]
             state["error"] = ""
             state["engine_used"] = "llm"
@@ -355,7 +357,13 @@ URL：{state['url']}
             state["error"] = ""
             state["engine_used"] = "llm"
 
-            logger.info(f"[ContentEvaluator] LLM evaluation successful - {state['decision']}")
+            logger.info(
+                f"[ContentEvaluator] LLM evaluation successful - {state['decision']}\n"
+                f"  标题: {state['title'][:60]}\n"
+                f"  创新: {state['innovation_score']} | 深度: {state['depth_score']} | 决策: {state['decision']}\n"
+                f"  TLDR: {state['tldr']}\n"
+                f"  推理: {state['reasoning']}"
+            )
 
         except (json.JSONDecodeError, ValueError, TypeError, IndexError) as e:
             state["error"] = f"JSON 解析失败: {str(e)}"

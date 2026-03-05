@@ -550,9 +550,24 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
                 max_tokens=max_tokens,
             )
         )
-        logger.info(f"[LLM Call] Success! Response length: {len(response.choices[0].message.content) if response.choices else 0}")
+        if not response.choices:
+            raise ValueError(f"LLM returned empty choices (model '{model_name}' may not exist or is unsupported by this endpoint)")
 
-        return response.choices[0].message.content if response.choices else ""
+        msg = response.choices[0].message
+
+        # 兼容推理模型（gpt-5-nano 等）：content 为空时尝试 reasoning_content
+        content = msg.content or ""
+        if not content:
+            content = getattr(msg, "reasoning_content", "") or ""
+        if not content:
+            # 尝试从原始字典中获取（不同中转站字段名可能不同）
+            raw = msg.model_dump() if hasattr(msg, "model_dump") else {}
+            content = raw.get("reasoning_content") or raw.get("thinking") or raw.get("text") or ""
+        if not content:
+            raise ValueError(f"LLM returned empty content (model '{model_name}' may be a reasoning model with unsupported output format)")
+
+        logger.info(f"[LLM Call] Success! Response length: {len(content)}")
+        return content
     except Exception as e:
         logger.error(f"[LLM Call] ❌ Failed to call LLM")
         logger.error(f"[LLM Call] Error type: {type(e).__name__}")

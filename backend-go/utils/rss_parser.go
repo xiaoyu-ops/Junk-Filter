@@ -3,6 +3,7 @@ package utils
 import (
 	"crypto/md5"
 	"fmt"
+	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -16,10 +17,25 @@ type RSSParser struct {
 	parser *gofeed.Parser
 }
 
-// NewRSSParser creates a new RSS parser
-func NewRSSParser() *RSSParser {
+// NewRSSParser creates a new RSS parser, optionally with HTTP proxy
+func NewRSSParser(proxyURL ...string) *RSSParser {
+	fp := gofeed.NewParser()
+
+	if len(proxyURL) > 0 && proxyURL[0] != "" {
+		proxy, err := url.Parse(proxyURL[0])
+		if err == nil {
+			transport := &http.Transport{
+				Proxy: http.ProxyURL(proxy),
+			}
+			fp.Client = &http.Client{
+				Transport: transport,
+				Timeout:   30 * time.Second,
+			}
+		}
+	}
+
 	return &RSSParser{
-		parser: gofeed.NewParser(),
+		parser: fp,
 	}
 }
 
@@ -44,11 +60,23 @@ func (rp *RSSParser) ParseFeed(feedURL string) ([]*FeedItem, error) {
 		return nil, fmt.Errorf("feed is nil")
 	}
 
+	// Extract feed-level author as fallback
+	feedAuthor := ""
+	if feed.Author != nil && feed.Author.Name != "" {
+		feedAuthor = feed.Author.Name
+	} else if feed.Title != "" {
+		feedAuthor = feed.Title
+	}
+
 	var items []*FeedItem
 	for _, item := range feed.Items {
 		author := ""
-		if item.Author != nil {
+		if item.Author != nil && item.Author.Name != "" {
 			author = item.Author.Name
+		} else if len(item.Authors) > 0 && item.Authors[0].Name != "" {
+			author = item.Authors[0].Name
+		} else {
+			author = feedAuthor
 		}
 		feedItem := &FeedItem{
 			Title:       item.Title,

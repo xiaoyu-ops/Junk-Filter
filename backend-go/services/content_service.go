@@ -22,13 +22,18 @@ func NewContentService(redis *redis.Client) *ContentService {
 
 // PublishToStream publishes a content to Redis Stream for evaluation
 func (cs *ContentService) PublishToStream(ctx context.Context, content *models.Content) error {
+	publishedAt := ""
+	if content.PublishedAt != nil {
+		publishedAt = content.PublishedAt.Format("2006-01-02T15:04:05Z")
+	}
+
 	message := &models.StreamMessage{
 		ContentID:   content.ID,
 		TaskID:      content.TaskID.String(),
 		Title:       content.Title,
 		URL:         content.OriginalURL,
 		Content:     content.CleanContent,
-		PublishedAt: content.PublishedAt.Format("2006-01-02T15:04:05Z"),
+		PublishedAt: publishedAt,
 		Platform:    content.Platform,
 		AuthorName:  content.AuthorName,
 		ContentHash: content.ContentHash,

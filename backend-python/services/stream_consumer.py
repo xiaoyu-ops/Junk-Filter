@@ -11,7 +11,6 @@ from services.evaluator import EvaluatorService
 from services.db_service import DBService
 from agents.content_evaluator import ContentEvaluationAgent
 from config import settings
-from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +119,10 @@ class StreamConsumer:
                                 str_value = value.decode("utf-8") if isinstance(value, bytes) else value
                                 data[str_key] = str_value
 
+                            # Go 发布时将整个 JSON 放在 "data" 字段里，需要先解包
+                            if "data" in data and len(data) == 1:
+                                data = json.loads(data["data"])
+
                             logger.debug(f"Parsed message keys: {list(data.keys())}")
 
                             # Convert content_id to int if it exists
@@ -181,6 +184,10 @@ class StreamConsumer:
 
         for message in messages:
             try:
+                # Rate limit: pause between LLM calls to avoid API throttling
+                if success_count + failure_count > 0:
+                    await asyncio.sleep(settings.llm_request_interval)
+
                 # Use ContentEvaluationAgent to evaluate
                 result = await self._evaluate_with_agent(message)
 

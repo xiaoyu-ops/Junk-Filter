@@ -5,8 +5,6 @@ import logging
 import signal
 import sys
 import os
-import uvicorn
-from threading import Thread
 
 from config import settings
 from services.stream_consumer import StreamConsumer
@@ -79,8 +77,6 @@ class Application:
     def __init__(self):
         self.consumer = None
         self.consumer_task = None
-        self.fastapi_app = None
-        self.uvicorn_server = None
 
     async def initialize(self):
         """Initialize all services"""
@@ -92,7 +88,7 @@ class Application:
         # Initialize Redis
         await Redis.initialize()
 
-        # ✨ 从数据库加载 LLM 配置（新增）
+        # Load LLM config from database
         from config import initialize_llm_config
         await initialize_llm_config(Database.get_pool())
 
@@ -104,10 +100,6 @@ class Application:
         )
         await self.consumer.initialize()
 
-        # Import FastAPI app
-        from api_server import app
-        self.fastapi_app = app
-
         logger.info("================================================\n")
 
     async def run(self):
@@ -115,23 +107,10 @@ class Application:
         try:
             await self.initialize()
 
-            # Start consumer in background
+            # Start consumer
             self.consumer_task = asyncio.create_task(self.consumer.run())
 
-            logger.info("Application running. Press Ctrl+C to stop.")
-            logger.info(f"FastAPI server will start on http://0.0.0.0:{settings.api_port}")
-
-            # Start FastAPI server in a separate thread
-            def run_fastapi():
-                uvicorn.run(
-                    self.fastapi_app,
-                    host="0.0.0.0",
-                    port=settings.api_port,
-                    log_level="info"
-                )
-
-            fastapi_thread = Thread(target=run_fastapi, daemon=True)
-            fastapi_thread.start()
+            logger.info("Stream consumer running. Press Ctrl+C to stop.")
 
             # Wait for consumer task (keep the app running)
             await self.consumer_task
