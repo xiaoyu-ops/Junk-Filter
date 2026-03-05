@@ -22,27 +22,61 @@
           </button>
         </div>
 
-        <!-- Sources -->
+        <!-- Sources (two-level: source -> authors) -->
         <div>
           <h3 class="px-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Sources</h3>
           <div class="space-y-0.5">
-            <button
-              v-for="source in readerStore.sources"
-              :key="source.name"
-              @click="readerStore.selectSource(source.name)"
-              :class="[
-                'w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors',
-                readerStore.selectedSource === source.name
-                  ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
-              ]"
-            >
-              <div class="flex items-center gap-2 min-w-0">
-                <div class="w-5 h-5 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center text-[10px] font-bold shrink-0">{{ source.initials }}</div>
-                <span class="text-sm truncate">{{ source.name }}</span>
-              </div>
-              <span class="text-xs text-gray-400 shrink-0 ml-2">{{ source.count }}</span>
-            </button>
+            <div v-for="source in readerStore.sources" :key="source.name">
+              <!-- Source row -->
+              <button
+                @click="readerStore.selectSource(source.name)"
+                :class="[
+                  'w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors',
+                  readerStore.selectedSource === source.name && !readerStore.selectedAuthor
+                    ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white'
+                    : readerStore.selectedSource === source.name
+                      ? 'bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300'
+                      : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+                ]"
+              >
+                <div class="flex items-center gap-2 min-w-0">
+                  <span
+                    class="material-symbols-outlined text-[14px] text-gray-400 transition-transform duration-200"
+                    :style="{ transform: readerStore.expandedSources[source.name] ? 'rotate(90deg)' : 'rotate(0deg)' }"
+                  >chevron_right</span>
+                  <div class="w-5 h-5 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center text-[10px] font-bold shrink-0">{{ source.initials }}</div>
+                  <span class="text-sm truncate">{{ source.name }}</span>
+                </div>
+                <span class="text-xs text-gray-400 shrink-0 ml-2">{{ source.count }}</span>
+              </button>
+
+              <!-- Authors (expanded) -->
+              <Transition
+                enter-active-class="transition-all duration-200 ease-out"
+                enter-from-class="opacity-0 max-h-0"
+                enter-to-class="opacity-100 max-h-96"
+                leave-active-class="transition-all duration-150 ease-in"
+                leave-from-class="opacity-100 max-h-96"
+                leave-to-class="opacity-0 max-h-0"
+              >
+                <div v-if="readerStore.expandedSources[source.name]" class="overflow-hidden">
+                  <button
+                    v-for="author in source.authors"
+                    :key="author.name"
+                    @click="readerStore.selectAuthor(source.name, author.name)"
+                    :class="[
+                      'w-full flex items-center justify-between pl-12 pr-3 py-1.5 rounded-lg transition-colors text-xs',
+                      readerStore.selectedAuthor === author.name && readerStore.selectedSource === source.name
+                        ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-medium'
+                        : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                    ]"
+                  >
+                    <span class="truncate">{{ author.name }}</span>
+                    <span class="text-gray-400 shrink-0 ml-2">{{ author.count }}</span>
+                  </button>
+                </div>
+              </Transition>
+            </div>
           </div>
         </div>
       </div>
@@ -52,7 +86,7 @@
     <section class="w-[340px] flex flex-col shrink-0 bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
       <div class="p-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
         <h2 class="font-semibold text-sm text-gray-900 dark:text-white">
-          {{ readerStore.selectedSource === 'all' ? 'All Articles' : readerStore.selectedSource }}
+          {{ readerStore.selectedSource === 'all' ? 'All Articles' : readerStore.selectedAuthor || readerStore.selectedSource }}
         </h2>
         <span class="text-xs text-gray-400">{{ readerStore.filteredArticles.length }}</span>
       </div>

@@ -5,6 +5,8 @@ export const useReaderStore = defineStore('reader', () => {
   const articles = ref([])
   const selectedArticleId = ref(null)
   const selectedSource = ref('all')
+  const selectedAuthor = ref(null)
+  const expandedSources = ref({})
   const isLoading = ref(false)
 
   const API_BASE_URL = 'http://localhost:8080/api'
@@ -41,11 +43,16 @@ export const useReaderStore = defineStore('reader', () => {
     const avgScore = ((innovationScore + depthScore) / 2).toFixed(1)
     const label = getScoreLabel(parseFloat(avgScore))
 
+    const sourceName = item.source_name || 'Unknown Source'
+    const authorName = item.author_name || sourceName
+
     return {
       id: item.id,
       title: item.title,
-      source: item.author_name || item.source_name || 'Unknown',
-      sourceInitials: (item.author_name || item.source_name || 'U').slice(0, 2).toUpperCase(),
+      source: authorName,
+      sourceName: sourceName,
+      authorName: authorName,
+      sourceInitials: sourceName.slice(0, 2).toUpperCase(),
       timeAgo: formatTimeAgo(item.published_at),
       publishedAt: item.published_at,
       summary: evaluation.tldr || '',
@@ -81,27 +88,44 @@ export const useReaderStore = defineStore('reader', () => {
   }
 
   /**
-   * Sources derived from loaded articles
+   * Sources derived from loaded articles (two-level: source -> authors)
    */
   const sources = computed(() => {
     const map = {}
     articles.value.forEach(a => {
-      if (!map[a.source]) {
-        map[a.source] = { name: a.source, initials: a.sourceInitials, count: 0 }
+      const sn = a.sourceName
+      if (!map[sn]) {
+        map[sn] = { name: sn, initials: sn.slice(0, 2).toUpperCase(), count: 0, authors: {} }
       }
-      map[a.source].count++
+      map[sn].count++
+      const an = a.authorName
+      if (!map[sn].authors[an]) {
+        map[sn].authors[an] = { name: an, count: 0 }
+      }
+      map[sn].authors[an].count++
     })
-    return Object.values(map).sort((a, b) => b.count - a.count)
+    return Object.values(map)
+      .map(s => ({
+        ...s,
+        authors: Object.values(s.authors).sort((a, b) => b.count - a.count),
+      }))
+      .sort((a, b) => b.count - a.count)
   })
 
   const totalCount = computed(() => articles.value.length)
 
   /**
-   * Filtered articles by selected source
+   * Filtered articles by selected source and author
    */
   const filteredArticles = computed(() => {
-    if (selectedSource.value === 'all') return articles.value
-    return articles.value.filter(a => a.source === selectedSource.value)
+    let list = articles.value
+    if (selectedSource.value !== 'all') {
+      list = list.filter(a => a.sourceName === selectedSource.value)
+      if (selectedAuthor.value) {
+        list = list.filter(a => a.authorName === selectedAuthor.value)
+      }
+    }
+    return list
   })
 
   /**
@@ -117,14 +141,36 @@ export const useReaderStore = defineStore('reader', () => {
   }
 
   const selectSource = (source) => {
-    selectedSource.value = source
+    if (selectedSource.value === source && source !== 'all') {
+      // Toggle expand/collapse
+      expandedSources.value[source] = !expandedSources.value[source]
+    } else {
+      selectedSource.value = source
+      selectedAuthor.value = null
+      selectedArticleId.value = null
+      if (source !== 'all') {
+        expandedSources.value[source] = true
+      }
+    }
+  }
+
+  const selectAuthor = (sourceName, authorName) => {
+    selectedSource.value = sourceName
+    selectedAuthor.value = authorName
     selectedArticleId.value = null
+    expandedSources.value[sourceName] = true
+  }
+
+  const toggleSourceExpand = (sourceName) => {
+    expandedSources.value[sourceName] = !expandedSources.value[sourceName]
   }
 
   return {
     articles,
     selectedArticleId,
     selectedSource,
+    selectedAuthor,
+    expandedSources,
     isLoading,
     sources,
     totalCount,
@@ -133,5 +179,7 @@ export const useReaderStore = defineStore('reader', () => {
     loadArticles,
     selectArticle,
     selectSource,
+    selectAuthor,
+    toggleSourceExpand,
   }
 })

@@ -171,7 +171,51 @@ export const useTimelineStore = defineStore('timeline', () => {
    * 刷新内容列表
    */
   const refreshContent = async () => {
-    await loadContent()
+    await Promise.all([loadContent(), loadStats()])
+  }
+
+  /**
+   * 终止评估：将所有 PENDING/PROCESSING 内容标记为 DISCARDED
+   */
+  const isStopping = ref(false)
+  const isStopped = ref(false)
+  const stopEvaluation = async () => {
+    isStopping.value = true
+    try {
+      const response = await fetch(`${API_BASE_URL}/content/stop-evaluation`, { method: 'POST' })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = await response.json()
+      console.info(`[Timeline] Evaluation stopped, ${data.affected} items discarded`)
+      isStopped.value = true
+      await loadStats()
+      return data.affected
+    } catch (err) {
+      console.error('[Timeline] Failed to stop evaluation:', err)
+      throw err
+    } finally {
+      isStopping.value = false
+    }
+  }
+
+  /**
+   * 重启评估：将 DISCARDED 内容恢复为 PENDING
+   */
+  const restartEvaluation = async () => {
+    isStopping.value = true
+    try {
+      const response = await fetch(`${API_BASE_URL}/content/restart-evaluation`, { method: 'POST' })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = await response.json()
+      console.info(`[Timeline] Evaluation restarted, ${data.affected} items reset to PENDING`)
+      isStopped.value = false
+      await loadStats()
+      return data.affected
+    } catch (err) {
+      console.error('[Timeline] Failed to restart evaluation:', err)
+      throw err
+    } finally {
+      isStopping.value = false
+    }
   }
 
   /**
@@ -227,6 +271,11 @@ export const useTimelineStore = defineStore('timeline', () => {
       loadStats()
     ])
 
+    // 根据统计数据判断是否处于终止状态
+    if (stats.value.discarded > 0 && stats.value.pending === 0 && stats.value.processing === 0) {
+      isStopped.value = true
+    }
+
     // ✨ 定时刷新统计信息（每 3 秒）
     setInterval(loadStats, 3000)
   }
@@ -247,6 +296,10 @@ export const useTimelineStore = defineStore('timeline', () => {
     loadContent,
     loadStats,       // ✨ 导出加载统计方法
     refreshContent,
+    stopEvaluation,
+    restartEvaluation,
+    isStopping,
+    isStopped,
     initialize,
   }
 })

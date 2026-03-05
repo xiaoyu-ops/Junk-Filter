@@ -178,6 +178,50 @@ func (ch *ContentHandler) ListContent(c *gin.Context) {
 	})
 }
 
+// StopEvaluation discards all PENDING and PROCESSING content to stop evaluation
+func (ch *ContentHandler) StopEvaluation(c *gin.Context) {
+	query := `
+		UPDATE content SET status = 'DISCARDED', updated_at = NOW()
+		WHERE status IN ('PENDING', 'PROCESSING')
+	`
+	result, err := ch.db.ExecContext(c.Request.Context(), query)
+	if err != nil {
+		log.Printf("Error stopping evaluation: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to stop evaluation"})
+		return
+	}
+
+	affected, _ := result.RowsAffected()
+	log.Printf("[StopEvaluation] Discarded %d pending/processing items", affected)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Evaluation stopped",
+		"affected": affected,
+	})
+}
+
+// RestartEvaluation resets DISCARDED content back to PENDING for re-evaluation
+func (ch *ContentHandler) RestartEvaluation(c *gin.Context) {
+	query := `
+		UPDATE content SET status = 'PENDING', updated_at = NOW()
+		WHERE status = 'DISCARDED'
+	`
+	result, err := ch.db.ExecContext(c.Request.Context(), query)
+	if err != nil {
+		log.Printf("Error restarting evaluation: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to restart evaluation"})
+		return
+	}
+
+	affected, _ := result.RowsAffected()
+	log.Printf("[RestartEvaluation] Reset %d discarded items to PENDING", affected)
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":  "Evaluation restarted",
+		"affected": affected,
+	})
+}
+
 // GetContentWithEvaluation retrieves content along with its evaluation
 func (ch *ContentHandler) GetContentWithEvaluation(c *gin.Context) {
 	idStr := c.Param("id")

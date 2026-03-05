@@ -94,6 +94,24 @@
           <span class="material-symbols-outlined text-[18px]">refresh</span>
           刷新
         </button>
+        <button
+          v-if="!timelineStore.isStopped"
+          @click="handleStopEvaluation"
+          :disabled="timelineStore.isStopping || timelineStore.stats.pending === 0"
+          class="px-4 py-1.5 rounded-full text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span class="material-symbols-outlined text-[18px]">{{ timelineStore.isStopping ? 'sync' : 'stop_circle' }}</span>
+          {{ timelineStore.isStopping ? '终止中...' : '终止评估' }}
+        </button>
+        <button
+          v-else
+          @click="handleRestartEvaluation"
+          :disabled="timelineStore.isStopping"
+          class="px-4 py-1.5 rounded-full text-sm font-medium text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <span class="material-symbols-outlined text-[18px]">{{ timelineStore.isStopping ? 'sync' : 'play_circle' }}</span>
+          {{ timelineStore.isStopping ? '重启中...' : '重启评估' }}
+        </button>
       </div>
       <!-- 加载状态指示 -->
       <div v-if="timelineStore.isLoading" class="mt-3 text-sm text-gray-500 dark:text-gray-400">
@@ -359,6 +377,25 @@ const openUrl = (url) => {
 const goToReader = (articleId) => {
   timelineStore.closeDetailDrawer()
   router.push(`/reader/${articleId}`)
+}
+
+const handleStopEvaluation = async () => {
+  if (!confirm('确定要终止所有待处理和评估中的内容吗？此操作可通过重启评估恢复。')) return
+  try {
+    const affected = await timelineStore.stopEvaluation()
+    alert(`已终止评估，${affected} 条内容被暂停`)
+  } catch {
+    alert('终止评估失败，请重试')
+  }
+}
+
+const handleRestartEvaluation = async () => {
+  try {
+    const affected = await timelineStore.restartEvaluation()
+    alert(`已重启评估，${affected} 条内容恢复待处理`)
+  } catch {
+    alert('重启评估失败，请重试')
+  }
 }
 
 /**
