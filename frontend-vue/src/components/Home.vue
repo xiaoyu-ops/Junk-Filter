@@ -135,7 +135,8 @@ const handleSearch = async (query) => {
   const { show: showToast } = useToast()
 
   try {
-    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+    const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+    const apiUrl = baseUrl.endsWith('/api') ? baseUrl : `${baseUrl}/api`
     const params = new URLSearchParams({ q: query, status: 'EVALUATED', limit: '50' })
 
     const response = await fetch(`${apiUrl}/search?${params.toString()}`)

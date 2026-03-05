@@ -22,6 +22,10 @@ redis:
 server:
   port: 8080
 
+## Python 评估服务配置
+python_api:
+  url: "http://localhost:8083"
+
 ## RSS 抓取配置 (P0 性能优化)
 ingestion:
   worker_count: 20          # ← P0: 从 5 改为 20 (支持更多并发抓取)

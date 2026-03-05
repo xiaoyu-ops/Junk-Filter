@@ -146,6 +146,41 @@ func (er *EvaluationRepository) ListByDecision(ctx context.Context, decision str
 	return evaluations, rows.Err()
 }
 
+// ListRecentBySourceID retrieves recent evaluations for a given source ID (via content.source_id)
+func (er *EvaluationRepository) ListRecentBySourceID(ctx context.Context, sourceID int64, limit int) ([]*models.Evaluation, error) {
+	rows, err := er.db.QueryContext(ctx,
+		`SELECT e.id, e.content_id, e.task_id, e.innovation_score, e.depth_score, e.decision, e.reasoning,
+		        e.tldr, e.key_concepts, e.evaluated_at, e.evaluator_version, e.created_at, e.updated_at
+		 FROM evaluation e
+		 JOIN content c ON c.id = e.content_id
+		 WHERE c.source_id = $1
+		 ORDER BY e.evaluated_at DESC LIMIT $2`,
+		sourceID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var evaluations []*models.Evaluation
+	for rows.Next() {
+		evaluation := &models.Evaluation{}
+		var keyConcepts pq.StringArray
+
+		err := rows.Scan(&evaluation.ID, &evaluation.ContentID, &evaluation.TaskID, &evaluation.InnovationScore,
+			&evaluation.DepthScore, &evaluation.Decision, &evaluation.Reasoning, &evaluation.TLDR,
+			&keyConcepts, &evaluation.EvaluatedAt, &evaluation.EvaluatorVersion, &evaluation.CreatedAt, &evaluation.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+
+		evaluation.KeyConcepts = keyConcepts
+		evaluations = append(evaluations, evaluation)
+	}
+
+	return evaluations, rows.Err()
+}
+
 // ListHighScores retrieves evaluations with high scores
 func (er *EvaluationRepository) ListHighScores(ctx context.Context, minInnovation, minDepth, limit, offset int) ([]*models.Evaluation, error) {
 	rows, err := er.db.QueryContext(ctx,

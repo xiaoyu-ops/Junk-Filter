@@ -207,10 +207,14 @@ export const useTimelineStore = defineStore('timeline', () => {
    * 计算过滤后的卡片列表
    */
   const filteredCards = computed(() => {
-    if (activeFilter.value === 'All') {
-      return cards.value
-    }
-    return cards.value.filter(card => card.status === activeFilter.value)
+    const list = activeFilter.value === 'All'
+      ? cards.value
+      : cards.value.filter(card => card.status === activeFilter.value)
+    return [...list].sort((a, b) => {
+      const timeA = a.publishedAt ? new Date(a.publishedAt).getTime() : 0
+      const timeB = b.publishedAt ? new Date(b.publishedAt).getTime() : 0
+      return timeB - timeA
+    })
   })
 
   /**

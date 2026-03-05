@@ -53,7 +53,9 @@ func (mr *MessageRepository) Create(ctx context.Context, msg *models.Message) (i
 // GetByTaskID retrieves all messages for a specific task
 func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]models.Message, error) {
 	query := `
-		SELECT id, task_id, role, type, content, metadata, message_type, created_at, updated_at
+		SELECT id, task_id, role, type, content,
+		       CASE WHEN LENGTH(metadata::text) > 10000 THEN NULL ELSE metadata END,
+		       message_type, created_at, updated_at
 		FROM messages
 		WHERE task_id = $1
 		ORDER BY created_at ASC

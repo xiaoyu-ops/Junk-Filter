@@ -345,6 +345,24 @@ async def task_chat(task_id: int, request: TaskChatRequest):
                     content = msg.get("content", "")[:100]  # 截断长消息
                     chat_history_str += f"{role}: {content}\n"
 
+            # 格式化评估卡片详情
+            cards_str = ""
+            if recent_cards:
+                for card in recent_cards[:10]:  # 最多显示 10 张
+                    cards_str += f"- 卡片 #{card.get('id', '?')}: "
+                    cards_str += f"决策={card.get('decision', '?')}, "
+                    cards_str += f"创新={card.get('innovation_score', '?')}/10, "
+                    cards_str += f"深度={card.get('depth_score', '?')}/10, "
+                    tldr = card.get('tldr', '')
+                    if tldr:
+                        cards_str += f"摘要: {tldr[:80]}"
+                    concepts = card.get('key_concepts', [])
+                    if concepts:
+                        cards_str += f", 关键词: {', '.join(concepts[:5])}"
+                    cards_str += f" (评估时间: {card.get('evaluated_at', '?')})\n"
+            else:
+                cards_str = "（暂无评估卡片）"
+
             # 构建系统提示词
             system_prompt = f"""你是 Junk Filter 的 Agent 调优助手。你的角色是帮助用户理解和优化 RSS 内容评估的 Agent。
 
@@ -362,18 +380,18 @@ async def task_chat(task_id: int, request: TaskChatRequest):
 【最近对话】
 {chat_history_str if chat_history_str else '（无历史对话）'}
 
-【最近的评估卡片摘要】
-{len(recent_cards)} 张卡片已评估
+【最近的评估卡片详情】共 {len(recent_cards)} 张
+{cards_str}
 
 你可以帮助用户：
-1. 查询任务状态："现在的执行进度如何？" → 提供处理数量、成功率、最近评估的内容类型
+1. 查询任务状态："现在的执行进度如何？" → 根据上面的卡片数据，提供实际的处理数量、决策分布、评分情况
 2. 调整过滤规则："接下来多关注深度学习的论文" → 建议如何修改 filter_rules
-3. 解释评估决策："为什么这张卡片被标记为 SKIP？" → 查阅卡片数据给出解释
+3. 解释评估决策："为什么这张卡片被标记为 SKIP？" → 根据上面的卡片数据中的摘要和评分来解释
 4. 性能建议："如何改进评估的准确性？" → 建议调整参数或规则
 
 回复时：
 - 使用自然流畅的中文
-- 直接回答用户的问题
+- 直接回答用户的问题，引用具体的卡片数据
 - 如果涉及参数修改，在回复中清楚地说明"建议: 将 temperature 改为 X"
 - 如果需要引用卡片，请说"参考卡片 #123"格式"""
 

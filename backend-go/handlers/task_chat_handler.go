@@ -134,9 +134,10 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 	log.Printf("[Task Chat] Context gathered. Task: %v", agentCtx.TaskMetadata["name"])
 
 	// Step 2: Save user message to database
+	// NOTE: Do NOT embed agentCtx here — it contains all historical messages
+	// with their metadata, causing exponential growth (759B → 500MB in 15 messages)
 	metadataJSON, _ := json.Marshal(map[string]interface{}{
 		"message_type": "user_query",
-		"context_snapshot": agentCtx,
 	})
 	metadataStr := string(metadataJSON)
 
@@ -252,12 +253,23 @@ func (ch *TaskChatHandler) gatherAgentContext(ctx context.Context, taskID int64,
 		agentCtx.ChatHistory = messages[start:]
 	}
 
-	// 3. Get recent evaluation cards (for context/reference)
-	// Note: Assuming evaluationRepo.GetRecentByTaskID exists or can be adapted
-	// For now, we'll add a placeholder
-	agentCtx.RecentCards = []map[string]interface{}{
-		// This would be populated by queries to the evaluation table
-		// Format: {id, decision, innovation_score, depth_score, tldr, key_concepts, timestamp}
+	// 3. Get recent evaluation cards (via source_id -> content -> evaluation)
+	evaluations, err := ch.evaluationRepo.ListRecentBySourceID(ctx, taskID, 10)
+	if err == nil && len(evaluations) > 0 {
+		for _, eval := range evaluations {
+			card := map[string]interface{}{
+				"id":               eval.ID,
+				"content_id":       eval.ContentID,
+				"decision":         eval.Decision,
+				"innovation_score": eval.InnovationScore,
+				"depth_score":      eval.DepthScore,
+				"tldr":             eval.TLDR,
+				"key_concepts":     []string(eval.KeyConcepts),
+				"reasoning":        eval.Reasoning,
+				"evaluated_at":     eval.EvaluatedAt.Format(time.RFC3339),
+			}
+			agentCtx.RecentCards = append(agentCtx.RecentCards, card)
+		}
 	}
 
 	// 4. Current Agent configuration
