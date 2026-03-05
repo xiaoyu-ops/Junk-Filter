@@ -312,6 +312,13 @@
         <!-- 抽屉底部按钮 -->
         <div class="p-6 border-t border-gray-200 dark:border-gray-700 flex gap-3">
           <button
+            @click="goToReader(timelineStore.selectedCard.id)"
+            class="flex-1 px-4 py-2.5 bg-gray-900 hover:bg-gray-800 dark:bg-white dark:hover:bg-gray-200 text-white dark:text-gray-900 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <span class="material-symbols-outlined text-[18px]">menu_book</span>
+            Read
+          </button>
+          <button
             @click="openUrl(timelineStore.selectedCard.url)"
             class="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
           >
@@ -326,8 +333,10 @@
 
 <script setup>
 import { onMounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTimelineStore } from '@/stores'
 
+const router = useRouter()
 const timelineStore = useTimelineStore()
 const filters = ['All', 'Interesting', 'Bookmark', 'Skip']
 
@@ -345,6 +354,11 @@ const openUrl = (url) => {
   if (url) {
     window.open(url, '_blank')
   }
+}
+
+const goToReader = (articleId) => {
+  timelineStore.closeDetailDrawer()
+  router.push(`/reader/${articleId}`)
 }
 
 /**

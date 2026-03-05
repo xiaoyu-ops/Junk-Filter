@@ -3,6 +3,7 @@ import Home from '@/components/Home.vue'
 import Timeline from '@/components/Timeline.vue'
 import Config from '@/components/Config.vue'
 import TaskDistribution from '@/components/TaskDistribution.vue'
+import Reader from '@/components/Reader.vue'
 import AppNavbar from '@/components/AppNavbar.vue'
 
 const routes = [
@@ -37,6 +38,14 @@ const routes = [
       navbar: AppNavbar,
     },
     meta: { title: 'Junk Filter - 分发任务' },
+  },
+  {
+    path: '/reader/:id?',
+    components: {
+      default: Reader,
+      navbar: AppNavbar,
+    },
+    meta: { title: 'Junk Filter - 阅读器' },
   },
 ]
 

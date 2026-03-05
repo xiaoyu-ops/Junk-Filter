@@ -125,7 +125,8 @@
       "Bash(Invoke-RestMethod:*)",
       "Bash(wget:*)",
       "Bash(node:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(npx vue-tsc:*)"
     ]
   }
 }

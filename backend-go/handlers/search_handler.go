@@ -75,9 +75,10 @@ func SearchContent(c *gin.Context) {
 		SELECT
 			c.id,
 			c.title,
-			c.content,
-			c.url,
+			c.clean_content,
+			c.original_url,
 			c.source_id,
+			c.author_name,
 			c.status,
 			c.published_at,
 			c.created_at,
@@ -86,11 +87,11 @@ func SearchContent(c *gin.Context) {
 			COALESCE(e.depth_score, 0) as depth_score,
 			COALESCE(e.decision, 'SKIP') as decision,
 			COALESCE(e.tldr, '') as tldr,
-			COALESCE(s.name, 'Unknown') as source_name
+			COALESCE(s.author_name, '') as source_name
 		FROM content c
 		LEFT JOIN evaluation e ON c.id = e.content_id
 		LEFT JOIN sources s ON c.source_id = s.id
-		WHERE (c.title ILIKE $1 OR c.content ILIKE $1)
+		WHERE (c.title ILIKE $1 OR c.clean_content ILIKE $1 OR c.author_name ILIKE $1)
 		  AND c.status = $2
 		ORDER BY
 			CASE
@@ -117,7 +118,7 @@ func SearchContent(c *gin.Context) {
 		var r ContentSearchResult
 		err := rows.Scan(
 			&r.ID, &r.Title, &r.Content, &r.URL, &r.SourceID,
-			&r.Status, &r.PublishedAt, &r.CreatedAt,
+			&r.AuthorName, &r.Status, &r.PublishedAt, &r.CreatedAt,
 			&r.EvaluationID, &r.InnovationScore, &r.DepthScore,
 			&r.Decision, &r.TLDR, &r.SourceName,
 		)
@@ -140,6 +141,7 @@ type ContentSearchResult struct {
 	Content          string `json:"content"`
 	URL              string `json:"url"`
 	SourceID         int    `json:"source_id"`
+	AuthorName       string `json:"author_name"`
 	Status           string `json:"status"`
 	PublishedAt      string `json:"published_at"`
 	CreatedAt        string `json:"created_at"`

@@ -351,6 +351,12 @@ func startServer(port int) {
 	handlers.RegisterAITaskRoutes(router, aiTaskHandler)
 	handlers.RegisterConfigRoutes(router, configHandler)
 
+	// 内容搜索路由（需要注入 db 到 context）
+	router.GET("/api/search", func(c *gin.Context) {
+		c.Set("db", appCtx.DB)
+		handlers.SearchContent(c)
+	})
+
 	// 健康检查端点
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{

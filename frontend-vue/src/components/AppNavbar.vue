@@ -32,6 +32,12 @@
       >
         分发任务
       </RouterLink>
+      <RouterLink
+        to="/reader"
+        :class="['nav-link', { active: currentRoute.startsWith('/reader') }]"
+      >
+        阅读器
+      </RouterLink>
     </nav>
 
     <!-- Theme Toggle -->
