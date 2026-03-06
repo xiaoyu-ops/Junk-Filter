@@ -5,8 +5,8 @@ scripts/*
 !scripts/*.sh
 !scripts/README.md
 # 过程md文件夹
-description/*
-claude.md
+description/
+CLAUDE.md
 # 环境配置
 *.env
 .env.local
