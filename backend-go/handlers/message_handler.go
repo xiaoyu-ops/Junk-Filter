@@ -24,20 +24,22 @@ func NewMessageHandler(messageRepo *repositories.MessageRepository) *MessageHand
 	}
 }
 
-// CreateMessageRequest request body (用于 /api/messages 路由)
+// CreateMessageRequest request body
 type CreateMessageRequest struct {
-	TaskID  int64   `json:"task_id" binding:"required"`
-	Role    string  `json:"role" binding:"required,oneof=user ai"`
-	Type    string  `json:"type" binding:"required,oneof=text execution"`
-	Content string  `json:"content" binding:"required"`
+	TaskID   int64   `json:"task_id" binding:"required"`
+	ThreadID *int64  `json:"thread_id,omitempty"`
+	Role     string  `json:"role" binding:"required,oneof=user ai"`
+	Type     string  `json:"type" binding:"required,oneof=text execution"`
+	Content  string  `json:"content" binding:"required"`
 	Metadata *string `json:"metadata,omitempty"`
 }
 
-// CreateMessageForTaskRequest request body (用于 /api/tasks/{id}/messages 路由)
+// CreateMessageForTaskRequest request body
 type CreateMessageForTaskRequest struct {
-	Role    string  `json:"role" binding:"required,oneof=user ai"`
-	Type    string  `json:"type" binding:"required,oneof=text execution"`
-	Content string  `json:"content" binding:"required"`
+	ThreadID *int64  `json:"thread_id,omitempty"`
+	Role     string  `json:"role" binding:"required,oneof=user ai"`
+	Type     string  `json:"type" binding:"required,oneof=text execution"`
+	Content  string  `json:"content" binding:"required"`
 	Metadata *string `json:"metadata,omitempty"`
 }
 
@@ -74,6 +76,7 @@ func (mh *MessageHandler) CreateMessage(c *gin.Context) {
 
 	msg := &models.Message{
 		TaskID:    req.TaskID,
+		ThreadID:  req.ThreadID,
 		Role:      req.Role,
 		Type:      req.Type,
 		Content:   req.Content,
@@ -110,6 +113,7 @@ func (mh *MessageHandler) CreateMessageForTask(c *gin.Context) {
 
 	msg := &models.Message{
 		TaskID:    taskID,
+		ThreadID:  req.ThreadID,
 		Role:      req.Role,
 		Type:      req.Type,
 		Content:   req.Content,

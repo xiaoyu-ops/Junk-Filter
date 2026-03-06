@@ -44,7 +44,11 @@
                     class="material-symbols-outlined text-[14px] text-gray-400 transition-transform duration-200"
                     :style="{ transform: readerStore.expandedSources[source.name] ? 'rotate(90deg)' : 'rotate(0deg)' }"
                   >chevron_right</span>
-                  <div class="w-5 h-5 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center text-[10px] font-bold shrink-0">{{ source.initials }}</div>
+                  <div class="w-5 h-5 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center shrink-0 overflow-hidden">
+                    <img v-if="source.faviconUrl" :src="source.faviconUrl" class="w-4 h-4 object-contain" @error="$event.target.style.display='none'; $event.target.nextElementSibling.style.display=''" />
+                    <span v-if="source.faviconUrl" class="text-[10px] font-bold" style="display:none">{{ source.initials }}</span>
+                    <span v-if="!source.faviconUrl" class="text-[10px] font-bold">{{ source.initials }}</span>
+                  </div>
                   <span class="text-sm truncate">{{ source.name }}</span>
                 </div>
                 <span class="text-xs text-gray-400 shrink-0 ml-2">{{ source.count }}</span>

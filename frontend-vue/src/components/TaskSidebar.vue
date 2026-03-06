@@ -1,5 +1,5 @@
 <template>
-  <aside class="w-80 flex flex-col bg-sidebar-light dark:bg-[#1F2937] rounded-xl p-6 shadow-sm overflow-hidden relative border border-gray-100 dark:border-gray-700/30">
+  <aside class="w-72 flex-shrink-0 flex flex-col bg-sidebar-light dark:bg-[#1F2937] rounded-xl p-6 shadow-sm overflow-hidden relative border border-gray-100 dark:border-gray-700/30">
     <!-- 标题 -->
     <h2 class="text-xl font-bold mb-6 text-gray-900 dark:text-gray-100">任务列表</h2>
 

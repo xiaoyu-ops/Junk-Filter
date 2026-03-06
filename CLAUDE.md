@@ -23,7 +23,7 @@
 
 **现有文档结构（参考）：**
 ```
-D:\TrueSignal\
+D:\JunkFilter\
 ├── CLAUDE.md                      # 仅有的主目录文档
 ├── start-all.bat/sh              # 启动脚本对
 ├── verify-day1.bat/sh            # 验证脚本对
@@ -114,10 +114,10 @@ docker-compose up -d
 docker-compose ps
 
 # 检查 PostgreSQL 连接
-docker exec truesignal-db psql -U truesignal -d truesignal -c "SELECT version();"
+docker exec junkfilter-db psql -U junkfilter -d junkfilter -c "SELECT version();"
 
 # 检查 Redis 连接
-docker exec truesignal-redis redis-cli ping
+docker exec junkfilter-redis redis-cli ping
 ```
 
 ### 本地运行应用
@@ -142,7 +142,7 @@ python main.py
 
 ```bash
 # 连接到 PostgreSQL
-docker exec -it truesignal-db psql -U truesignal -d truesignal
+docker exec -it junkfilter-db psql -U junkfilter -d junkfilter
 
 # psql 中的关键命令：
 \dt                    # 列出所有表
@@ -152,7 +152,7 @@ SELECT * FROM sources; # 查看 RSS 源
 
 ```bash
 # 连接到 Redis CLI
-docker exec -it truesignal-redis redis-cli
+docker exec -it junkfilter-redis redis-cli
 
 # 关键命令：
 PING                   # 测试连接
@@ -212,9 +212,9 @@ published_at (ISO8601)   - 发布时间
 ```
 DB_HOST=localhost
 DB_PORT=5432
-DB_USER=truesignal
-DB_PASSWORD=truesignal123
-DB_NAME=truesignal
+DB_USER=junkfilter
+DB_PASSWORD=junkfilter123
+DB_NAME=junkfilter
 
 REDIS_URL=redis://localhost:6379/0
 
@@ -311,13 +311,13 @@ XPENDING ingestion_queue evaluators
 
 ```bash
 # 重置 PostgreSQL（删除所有数据，保留 schema）
-docker exec truesignal-db psql -U truesignal -d truesignal -c "TRUNCATE sources, content, evaluation, user_subscription, status_log CASCADE;"
+docker exec junkfilter-db psql -U junkfilter -d junkfilter -c "TRUNCATE sources, content, evaluation, user_subscription, status_log CASCADE;"
 
 # 用演示数据重新初始化
-docker exec -it truesignal-db psql -U truesignal -d truesignal < sql/schema.sql
+docker exec -it junkfilter-db psql -U junkfilter -d junkfilter < sql/schema.sql
 
 # 清空 Redis
-docker exec truesignal-redis redis-cli FLUSHDB
+docker exec junkfilter-redis redis-cli FLUSHDB
 ```
 
 ## 关键依赖
@@ -348,7 +348,7 @@ docker exec truesignal-redis redis-cli FLUSHDB
 **手动验证：**
 - 使用提供的验证脚本或直接查询数据库
 - 监控日志：`docker-compose logs <service>`
-- 检查 Redis Stream 深度：`docker exec truesignal-redis redis-cli XLEN ingestion_queue`
+- 检查 Redis Stream 深度：`docker exec junkfilter-redis redis-cli XLEN ingestion_queue`
 
 ## 故障排查
 
@@ -360,10 +360,10 @@ docker exec truesignal-redis redis-cli FLUSHDB
 **数据库连接错误：**
 - 验证 `.env` 中的凭证与 docker-compose.yml 环境变量匹配
 - 检查容器状态：`docker-compose ps`
-- 手动测试：`docker exec truesignal-db psql -U truesignal -d truesignal -c "SELECT 1"`
+- 手动测试：`docker exec junkfilter-db psql -U junkfilter -d junkfilter -c "SELECT 1"`
 
 **Redis 连接错误：**
-- 检查 Redis 是否运行：`docker exec truesignal-redis redis-cli ping`
+- 检查 Redis 是否运行：`docker exec junkfilter-redis redis-cli ping`
 - 验证 .env 中的 REDIS_URL：`redis://localhost:6379/0`
 - 查看日志：`docker-compose logs redis`
 
@@ -423,7 +423,7 @@ docker exec truesignal-redis redis-cli FLUSHDB
 
 ---
 
-## 前端项目进度 (TrueSignal Junk Filter - UI)
+## 前端项目进度 (Junk Filter - UI)
 
 ### 当前状态 (2026-02-27)
 
@@ -673,7 +673,7 @@ CRITICAL_KEYS = ["LLM_MODEL_ID", "OPENAI_API_KEY", "LLM_BASE_URL", "LLM_TEMPERAT
 - 原 config.py 使用 `if key not in os.environ` 导致无法覆盖
 
 #### 3. 项目名称统一 ✅
-- 从 `TrueSignal` 更新为 `Junk Filter`
+- 从 `TrueSignal` 更新为 `Junk Filter`（已完成）
 - 更新了所有相关代码文件中的项目标识
 - 更新了启动日志和文档
 
@@ -754,10 +754,10 @@ npm run dev
 docker-compose ps
 
 # 2. 验证数据库连接
-docker exec truesignal-db psql -U truesignal -d truesignal -c "SELECT version();"
+docker exec junkfilter-db psql -U junkfilter -d junkfilter -c "SELECT version();"
 
 # 3. 验证 Redis 连接
-docker exec truesignal-redis redis-cli ping
+docker exec junkfilter-redis redis-cli ping
 
 # 4. 访问前端应用
 http://localhost:5173

@@ -1,84 +1,5 @@
 <template>
   <section class="flex-1 bg-white dark:bg-[#111827] rounded-xl border border-gray-200 dark:border-gray-700/50 shadow-sm flex flex-col overflow-hidden relative">
-    <!-- 工具栏：搜索、过滤、导出 -->
-    <div class="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-3">
-      <!-- 搜索栏 -->
-      <div class="flex items-center gap-3">
-        <div class="flex-1 relative">
-          <input
-            v-model="searchText"
-            @input="(e) => handleSearchInput(e.target.value)"
-            type="text"
-            placeholder="搜索消息... (实时搜索)"
-            class="w-full pl-10 pr-10 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent transition-all"
-          />
-          <span class="material-icons-outlined absolute left-3 top-2.5 text-gray-400 dark:text-gray-500 text-lg">search</span>
-          <button
-            v-if="searchText"
-            @click="clearSearch"
-            class="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
-          >
-            <span class="material-icons-outlined text-lg">close</span>
-          </button>
-        </div>
-        <button
-          @click="handleExportMessages"
-          :disabled="isExporting || filteredMessages.length === 0"
-          class="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:opacity-60 text-white text-sm font-medium transition-colors flex items-center gap-2"
-        >
-          <span class="material-icons-outlined text-sm" :class="{ 'animate-spin': isExporting }">{{ isExporting ? 'hourglass_top' : 'download' }}</span>
-          <span class="hidden sm:inline">{{ isExporting ? '导出中...' : '导出' }}</span>
-        </button>
-      </div>
-
-      <!-- 过滤栏 -->
-      <div class="flex items-center gap-3 flex-wrap">
-        <span class="text-xs font-medium text-gray-600 dark:text-gray-400">过滤:</span>
-
-        <!-- 日期范围过滤 -->
-        <select
-          v-model="filterDateRange"
-          class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-all"
-        >
-          <option value="all">全部时间</option>
-          <option value="today">今天</option>
-          <option value="week">本周</option>
-          <option value="month">本月</option>
-        </select>
-
-        <!-- 消息状态过滤 -->
-        <select
-          v-model="filterStatus"
-          class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-all"
-        >
-          <option value="all">全部状态</option>
-          <option value="unread">未读</option>
-          <option value="read">已读</option>
-        </select>
-
-        <!-- 导出格式选择 -->
-        <select
-          v-model="exportFormat"
-          class="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-all"
-        >
-          <option value="markdown">Markdown</option>
-          <option value="json">JSON</option>
-          <option value="csv">CSV</option>
-        </select>
-
-        <!-- 结果计数 -->
-        <span class="text-xs text-gray-600 dark:text-gray-400 ml-auto">
-          {{ filteredMessages.length }} / {{ messages.length }} 条消息
-        </span>
-      </div>
-
-      <!-- 搜索状态指示 -->
-      <div v-if="showSearchResults && searchText" class="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-        <span class="material-icons-outlined text-sm">search_insights</span>
-        <span>找到 {{ searchResults.length }} 条搜索结果</span>
-      </div>
-    </div>
-
     <!-- 消息列表加载状态 -->
     <div
       v-if="messagesLoading && !taskStore.selectedTaskId === false"
@@ -106,12 +27,12 @@
 
     <!-- 消息列表容器 -->
     <div
-      v-else-if="filteredMessages.length > 0"
+      v-else-if="messages.length > 0"
       ref="containerRef"
       class="flex-1 overflow-y-auto space-y-4 p-6"
     >
       <!-- 消息列表循环 -->
-      <template v-for="msg in filteredMessages" :key="msg.id">
+      <template v-for="msg in messages" :key="msg.id">
         <ChatMessage :message="msg" />
       </template>
 
@@ -136,27 +57,17 @@
       <div class="text-center">
         <div class="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
           <span class="material-icons-outlined text-4xl text-gray-500 dark:text-gray-400">
-            {{ !taskStore.selectedTaskId ? 'chat' : (searchText ? 'search_off' : 'inbox') }}
+            {{ !taskStore.selectedTaskId ? 'chat' : 'chat_bubble_outline' }}
           </span>
         </div>
         <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-          {{ !taskStore.selectedTaskId ? '选择一个任务开始' : (searchText ? '未找到匹配消息' : '暂无消息') }}
+          {{ !taskStore.selectedTaskId ? '选择一个任务开始' : '暂无消息' }}
         </h3>
         <p class="text-gray-600 dark:text-gray-400 mb-6">
           {{ !taskStore.selectedTaskId
             ? '从左侧任务列表中选择一个任务，查看对话历史和执行详情'
-            : (searchText
-              ? `没有找到包含"${searchText}"的消息，试试其他关键词`
-              : '该任务暂无消息，开始对话以创建记录') }}
+            : '该任务暂无消息，开始对话以创建记录' }}
         </p>
-        <!-- 清空搜索按钮 (仅搜索无结果时显示) -->
-        <button
-          v-if="searchText"
-          @click="clearSearch"
-          class="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          清空搜索
-        </button>
       </div>
     </div>
 
@@ -185,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useTaskStore } from '@/stores/useTaskStore'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { useAPI } from '@/composables/useAPI'
@@ -221,141 +132,6 @@ const currentAiMessageId = ref(null)
 // SSE 关闭函数
 const closeSseConnection = ref(null)
 
-// ==================== 搜索功能 ====================
-const searchText = ref('')
-const searchDebounceTimer = ref(null)
-const isSearching = ref(false)
-const searchResults = ref([])
-const showSearchResults = ref(false)
-
-/**
- * 执行消息搜索（带防抖）
- */
-const performSearch = async (query) => {
-  if (!query.trim()) {
-    searchResults.value = []
-    showSearchResults.value = false
-    return
-  }
-
-  isSearching.value = true
-  try {
-    searchResults.value = await messagesAPI.search(query, taskStore.selectedTaskId)
-    showSearchResults.value = true
-  } catch (error) {
-    console.error('搜索消息失败:', error)
-  } finally {
-    isSearching.value = false
-  }
-}
-
-/**
- * 处理搜索输入（防抖 300ms）
- */
-const handleSearchInput = (value) => {
-  clearTimeout(searchDebounceTimer.value)
-  searchDebounceTimer.value = setTimeout(() => {
-    performSearch(value)
-  }, 300)
-}
-
-/**
- * 清空搜索
- */
-const clearSearch = () => {
-  searchText.value = ''
-  searchResults.value = []
-  showSearchResults.value = false
-}
-
-// ==================== 过滤功能 ====================
-const filterDateRange = ref('all') // all, today, week, month
-const filterStatus = ref('all') // all, read, unread
-
-/**
- * 获取过滤后的消息列表
- */
-const filteredMessages = computed(() => {
-  if (showSearchResults.value) {
-    return highlightSearchResults(searchResults.value)
-  }
-
-  let filtered = [...messages.value]
-
-  // 按日期范围过滤
-  const now = new Date()
-  if (filterDateRange.value !== 'all') {
-    const messageDate = (msg) => new Date(msg.timestamp || msg.created_at)
-
-    if (filterDateRange.value === 'today') {
-      filtered = filtered.filter(msg => {
-        const msgDate = messageDate(msg)
-        return msgDate.toDateString() === now.toDateString()
-      })
-    } else if (filterDateRange.value === 'week') {
-      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-      filtered = filtered.filter(msg => messageDate(msg) >= weekAgo)
-    } else if (filterDateRange.value === 'month') {
-      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
-      filtered = filtered.filter(msg => messageDate(msg) >= monthAgo)
-    }
-  }
-
-  // 按状态过滤
-  if (filterStatus.value !== 'all') {
-    filtered = filtered.filter(msg => {
-      const isRead = msg.read === true
-      if (filterStatus.value === 'read') return isRead
-      if (filterStatus.value === 'unread') return !isRead
-      return true
-    })
-  }
-
-  return filtered
-})
-
-/**
- * 为搜索结果中的关键词进行高亮
- */
-const highlightSearchResults = (results) => {
-  return results.map(msg => ({
-    ...msg,
-    highlightedContent: msg.content,
-    searchQuery: searchText.value,
-  }))
-}
-
-// ==================== 导出功能 ====================
-const isExporting = ref(false)
-const exportFormat = ref('markdown')
-
-/**
- * 处理消息导出
- */
-const handleExportMessages = async () => {
-  isExporting.value = true
-  try {
-    const { blob, filename } = await messagesAPI.export(exportFormat.value, taskStore.selectedTaskId)
-
-    // 创建下载链接
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
-
-    showToast(`已导出 ${filteredMessages.value.length} 条消息为 ${exportFormat.value}`, 'success', 2000)
-  } catch (error) {
-    console.error('导出失败:', error)
-    showToast('导出失败，请重试', 'error', 2000)
-  } finally {
-    isExporting.value = false
-  }
-}
-
 // 使用 useScrollLock Composable
 const {
   containerRef,
@@ -369,7 +145,7 @@ const {
 /**
  * 加载消息历史
  */
-const loadMessages = async (taskId) => {
+const loadMessages = async (taskId, threadId = undefined) => {
   if (!taskId) {
     messages.value = []
     messagesError.value = null
@@ -379,7 +155,7 @@ const loadMessages = async (taskId) => {
   messagesLoading.value = true
   messagesError.value = null
   try {
-    const messageList = await messagesAPI.list(taskId)
+    const messageList = await messagesAPI.list(taskId, { threadId })
     // 规范化消息格式（适配不同后端返回的字段）
     messages.value = (messageList || []).map(msg => ({
       id: msg.id || `msg-${Date.now()}`,
@@ -389,7 +165,7 @@ const loadMessages = async (taskId) => {
       timestamp: msg.created_at || msg.timestamp || new Date().toISOString(),
       created_at: msg.created_at,
       updated_at: msg.updated_at,
-      read: msg.read === false ? false : true, // 默认标记为已读
+      thread_id: msg.thread_id,
     }))
   } catch (error) {
     console.error('加载消息失败:', error)
@@ -405,7 +181,7 @@ const loadMessages = async (taskId) => {
  */
 const handleRetryLoadMessages = async () => {
   messagesError.value = null
-  await loadMessages(taskStore.selectedTaskId)
+  await loadMessages(taskStore.selectedTaskId, taskStore.selectedThreadId)
 }
 
 /**
@@ -420,7 +196,7 @@ onMounted(() => {
   })
   // 如果已有选中的任务，加载消息
   if (taskStore.selectedTaskId) {
-    loadMessages(taskStore.selectedTaskId)
+    loadMessages(taskStore.selectedTaskId, taskStore.selectedThreadId)
   }
 })
 
@@ -440,15 +216,23 @@ onUnmounted(() => {
  */
 watch(() => taskStore.selectedTaskId, (taskId) => {
   if (taskId) {
-    loadMessages(taskId)
-    clearSearch()  // 切换任务时清空搜索
+    loadMessages(taskId, taskStore.selectedThreadId)
+  }
+})
+
+/**
+ * 监听选中子对话变化，重新加载消息
+ */
+watch(() => taskStore.selectedThreadId, (threadId) => {
+  if (taskStore.selectedTaskId) {
+    loadMessages(taskStore.selectedTaskId, threadId)
   }
 })
 
 /**
  * 监听消息列表变化，自动滚到底部（如果用户在底部）
  */
-watch(filteredMessages, async () => {
+watch(messages, async () => {
   await autoScrollToBottom()
 }, { deep: true })
 
@@ -474,7 +258,6 @@ const handleSendMessage = async (e) => {
     type: 'text',
     content: trimmedText,
     timestamp: new Date().toISOString(),
-    read: false,
   }
 
   // 添加到消息列表
@@ -487,6 +270,7 @@ const handleSendMessage = async (e) => {
       role: 'user',
       type: 'text',
       content: trimmedText,
+      thread_id: taskStore.selectedThreadId || undefined,
     })
   } catch (error) {
     console.error('保存用户消息失败:', error)
@@ -520,7 +304,6 @@ const handleSSEResponse = async (userInput) => {
     type: 'text',
     content: '',
     timestamp: new Date().toISOString(),
-    read: false,
     processing: true,
     messageType: 'ai_reply',  // 标记为自然语言回复
   }
@@ -556,6 +339,7 @@ const handleSSEResponse = async (userInput) => {
       userInput,
       llmConfig,      // ← 传递 LLM 配置
       evalConfig,     // ← 传递评估配置
+      taskStore.selectedThreadId,  // ← 传递子对话 ID
       (eventData) => {
         console.log('[Task Chat Event]', eventData)
 
@@ -638,6 +422,7 @@ const handleSSEResponse = async (userInput) => {
           role: 'ai',
           type: 'text',
           content: aiResponseContent,
+          thread_id: taskStore.selectedThreadId || undefined,
           metadata: JSON.stringify({
             messageType: 'ai_reply',
             parameterUpdates: parameterUpdates,
@@ -672,14 +457,7 @@ const simulateAiResponse = async (userInput) => {
   // 模拟网络延迟
   await new Promise(resolve => setTimeout(resolve, 800))
 
-  // 简单的 AI 回复示例
-  const responses = {
-    '你好': '你好！👋 我是 TrueSignal AI 助手。有什么我可以帮助你的吗？',
-    '帮助': '我可以帮助你：\n1. 分析 RSS 内容\n2. 生成摘要\n3. 评估信息质量',
-    default: `我已收到你的消息："${userInput}"。我正在思考如何最好地帮助你...\n\n这是一条示例回复，用来演示 Markdown 渲染：\n\n### 功能示例\n- **加粗文本**\n- *斜体文本*\n- [链接示例](https://example.com)\n- \`代码示例\`\n\n\`\`\`javascript\nconst hello = () => {\n  console.log('Hello World')\n}\n\`\`\``,
-  }
-
-  const responseText = responses[userInput] || responses.default
+  const responseText = `我已收到你的消息："${userInput}"。我正在思考如何最好地帮助你...\n\n这是一条示例回复，用来演示 Markdown 渲染：\n\n### 功能示例\n- **加粗文本**\n- *斜体文本*\n- \`代码示例\`\n\n\`\`\`javascript\nconst hello = () => {\n  console.log('Hello World')\n}\n\`\`\``
 
   // 创建 AI 消息
   const aiMessage = {
@@ -688,31 +466,9 @@ const simulateAiResponse = async (userInput) => {
     type: 'text',
     content: responseText,
     timestamp: new Date().toISOString(),
-    read: false,
   }
 
   messages.value.push(aiMessage)
-
-  // 模拟评估结果卡片
-  if (Math.random() > 0.5) {
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    const evaluationMessage = {
-      id: `msg-eval-${Date.now()}`,
-      role: 'ai',
-      type: 'evaluation',
-      evaluationData: {
-        innovation_score: Math.floor(Math.random() * 10) + 1,
-        depth_score: Math.floor(Math.random() * 10) + 1,
-        decision: ['推荐', '中立', '不推荐'][Math.floor(Math.random() * 3)],
-        tldr: '这是一条模拟的总结信息',
-      },
-      timestamp: new Date().toISOString(),
-      read: false,
-    }
-
-    messages.value.push(evaluationMessage)
-  }
 }
 
 /**

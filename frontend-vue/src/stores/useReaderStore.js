@@ -53,6 +53,7 @@ export const useReaderStore = defineStore('reader', () => {
       sourceName: sourceName,
       authorName: authorName,
       sourceInitials: sourceName.slice(0, 2).toUpperCase(),
+      faviconUrl: item.favicon_url || null,
       timeAgo: formatTimeAgo(item.published_at),
       publishedAt: item.published_at,
       summary: evaluation.tldr || '',
@@ -95,7 +96,10 @@ export const useReaderStore = defineStore('reader', () => {
     articles.value.forEach(a => {
       const sn = a.sourceName
       if (!map[sn]) {
-        map[sn] = { name: sn, initials: sn.slice(0, 2).toUpperCase(), count: 0, authors: {} }
+        map[sn] = { name: sn, initials: sn.slice(0, 2).toUpperCase(), faviconUrl: a.faviconUrl, count: 0, authors: {} }
+      }
+      if (!map[sn].faviconUrl && a.faviconUrl) {
+        map[sn].faviconUrl = a.faviconUrl
       }
       map[sn].count++
       const an = a.authorName

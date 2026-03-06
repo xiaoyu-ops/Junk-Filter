@@ -1,11 +1,14 @@
 <template>
-  <!-- 主容器：左侧列表 + 右侧对话区 -->
+  <!-- 主容器：三栏布局 - 任务列表 | 子对话列表 | 对话区 -->
   <main class="flex-grow px-8 py-6 h-[calc(100vh-80px)] relative overflow-hidden">
-    <div class="flex h-full gap-6">
-      <!-- 左侧：任务列表 (固定宽度 320px) -->
+    <div class="flex h-full gap-4">
+      <!-- 左栏：任务列表 (固定宽度 280px) -->
       <TaskSidebar />
 
-      <!-- 右侧：对话区域 (自适应宽度) -->
+      <!-- 中栏：子对话列表 (固定宽度 256px) -->
+      <ThreadList />
+
+      <!-- 右栏：对话区域 (自适应宽度) -->
       <TaskChat />
     </div>
 
@@ -21,6 +24,7 @@
 import { onMounted } from 'vue'
 import { useTaskStore } from '@/stores/useTaskStore'
 import TaskSidebar from './TaskSidebar.vue'
+import ThreadList from './ThreadList.vue'
 import TaskChat from './TaskChat.vue'
 import TaskModal from './TaskModal.vue'
 import AIAssistantModal from './AIAssistantModal.vue'

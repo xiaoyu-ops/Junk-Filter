@@ -97,7 +97,7 @@
         <button
           v-if="!timelineStore.isStopped"
           @click="handleStopEvaluation"
-          :disabled="timelineStore.isStopping || timelineStore.stats.pending === 0"
+          :disabled="timelineStore.isStopping || (timelineStore.stats.pending === 0 && timelineStore.stats.processing === 0)"
           class="px-4 py-1.5 rounded-full text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <span class="material-symbols-outlined text-[18px]">{{ timelineStore.isStopping ? 'sync' : 'stop_circle' }}</span>
@@ -143,7 +143,9 @@
             <!-- 作者头像和信息 -->
             <div class="flex flex-col items-center gap-2 min-w-[72px]">
               <div class="w-14 h-14 rounded-full bg-gray-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden border border-gray-100 dark:border-gray-700">
-                <span class="material-symbols-outlined text-3xl text-gray-300 dark:text-gray-500">person</span>
+                <img v-if="card.faviconUrl" :src="card.faviconUrl" :alt="card.author" class="w-8 h-8 object-contain" @error="$event.target.style.display='none'; $event.target.nextElementSibling.style.display=''" />
+                <span v-if="card.faviconUrl" class="material-symbols-outlined text-3xl text-gray-300 dark:text-gray-500" style="display:none">person</span>
+                <span v-if="!card.faviconUrl" class="material-symbols-outlined text-3xl text-gray-300 dark:text-gray-500">person</span>
               </div>
               <h3 class="font-semibold text-sm text-center text-gray-900 dark:text-white line-clamp-2">{{ card.author }}</h3>
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ card.authorTime }}</span>
@@ -237,8 +239,10 @@
         <div class="flex-1 overflow-y-auto p-6 space-y-6">
           <!-- 作者信息 -->
           <div class="flex items-center gap-4">
-            <div class="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-              <span class="material-icons-outlined text-3xl text-gray-400 dark:text-gray-500">person</span>
+            <div class="w-16 h-16 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <img v-if="timelineStore.selectedCard.faviconUrl" :src="timelineStore.selectedCard.faviconUrl" :alt="timelineStore.selectedCard.author" class="w-10 h-10 object-contain" @error="$event.target.style.display='none'; $event.target.nextElementSibling.style.display=''" />
+              <span v-if="timelineStore.selectedCard.faviconUrl" class="material-icons-outlined text-3xl text-gray-400 dark:text-gray-500" style="display:none">person</span>
+              <span v-if="!timelineStore.selectedCard.faviconUrl" class="material-icons-outlined text-3xl text-gray-400 dark:text-gray-500">person</span>
             </div>
             <div class="min-w-0 flex-1">
               <h3 class="text-lg font-semibold text-gray-900 dark:text-white truncate">{{ timelineStore.selectedCard.author }}</h3>

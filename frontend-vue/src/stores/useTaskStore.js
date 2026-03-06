@@ -92,6 +92,87 @@ export const useTaskStore = defineStore('task', () => {
   // 选中任务
   const selectTask = (taskId) => {
     selectedTaskId.value = taskId
+    // 切换任务时重置子对话选择
+    selectedThreadId.value = null
+    threads.value = []
+    if (taskId) {
+      loadThreads(taskId)
+    }
+  }
+
+  // ==================== 子对话管理 ====================
+
+  const threads = ref([])
+  const selectedThreadId = ref(null)
+  const isLoadingThreads = ref(false)
+
+  const selectedThread = computed(() =>
+    threads.value.find(t => t.id === selectedThreadId.value) || null
+  )
+
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+  const apiBase = API_BASE.endsWith('/api') ? API_BASE : `${API_BASE}/api`
+
+  // 从前端 taskId (如 "source-6") 提取真实数字 ID
+  const extractSourceId = (taskId) => {
+    if (typeof taskId === 'string' && taskId.startsWith('source-')) {
+      return taskId.replace('source-', '')
+    }
+    return taskId
+  }
+
+  const loadThreads = async (taskId) => {
+    isLoadingThreads.value = true
+    try {
+      const realId = extractSourceId(taskId)
+      const response = await fetch(`${apiBase}/tasks/${realId}/threads`)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = await response.json()
+      threads.value = data.data || []
+    } catch (error) {
+      console.error('Failed to load threads:', error)
+      threads.value = []
+    } finally {
+      isLoadingThreads.value = false
+    }
+  }
+
+  const createThread = async (taskId, title) => {
+    try {
+      const realId = extractSourceId(taskId)
+      const response = await fetch(`${apiBase}/tasks/${realId}/threads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const thread = await response.json()
+      threads.value.unshift(thread)
+      selectedThreadId.value = thread.id
+      return thread
+    } catch (error) {
+      console.error('Failed to create thread:', error)
+      showToast('创建子对话失败', 'error')
+      throw error
+    }
+  }
+
+  const deleteThread = async (threadId) => {
+    try {
+      const response = await fetch(`${apiBase}/threads/${threadId}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      threads.value = threads.value.filter(t => t.id !== threadId)
+      if (selectedThreadId.value === threadId) {
+        selectedThreadId.value = null
+      }
+    } catch (error) {
+      console.error('Failed to delete thread:', error)
+      showToast('删除子对话失败', 'error')
+    }
+  }
+
+  const selectThread = (threadId) => {
+    selectedThreadId.value = threadId
   }
 
   // 重置表单
@@ -380,6 +461,18 @@ export const useTaskStore = defineStore('task', () => {
     closeExecutionHistoryModal,
     isTaskExecuting,
     getExecutionProgress,
+
+    // Thread State
+    threads,
+    selectedThreadId,
+    selectedThread,
+    isLoadingThreads,
+
+    // Thread Actions
+    loadThreads,
+    createThread,
+    deleteThread,
+    selectThread,
 
     // Helpers
     getFrequencyLabel

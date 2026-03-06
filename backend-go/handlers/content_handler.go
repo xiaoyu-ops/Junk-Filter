@@ -138,13 +138,20 @@ func (ch *ContentHandler) ListContent(c *gin.Context) {
 		return
 	}
 
-	// Build source name cache to avoid N+1 queries
-	sourceNames := make(map[int64]string)
+	// Build source cache to avoid N+1 queries
+	type sourceInfo struct {
+		name       string
+		faviconURL *string
+	}
+	sourceCache := make(map[int64]sourceInfo)
 	for _, cont := range contents {
-		if _, exists := sourceNames[cont.SourceID]; !exists && cont.SourceID > 0 {
+		if _, exists := sourceCache[cont.SourceID]; !exists && cont.SourceID > 0 {
 			source, err := ch.sourceRepo.GetByID(c.Request.Context(), cont.SourceID)
 			if err == nil && source != nil {
-				sourceNames[cont.SourceID] = source.AuthorName
+				sourceCache[cont.SourceID] = sourceInfo{
+					name:       source.AuthorName,
+					faviconURL: source.FaviconURL,
+				}
 			}
 		}
 	}
@@ -154,15 +161,18 @@ func (ch *ContentHandler) ListContent(c *gin.Context) {
 		*models.ContentResponse
 		Evaluation *models.EvaluationResponse `json:"evaluation,omitempty"`
 		SourceName string                     `json:"source_name,omitempty"`
+		FaviconURL *string                    `json:"favicon_url,omitempty"`
 	}
 
 	responses := make([]*ContentWithEvaluation, len(contents))
 	for i, cont := range contents {
 		// Get evaluation if exists
 		evaluation, err := ch.evaluationRepo.GetByContentID(c.Request.Context(), cont.ID)
+		info := sourceCache[cont.SourceID]
 		response := &ContentWithEvaluation{
 			ContentResponse: cont.ToResponse(),
-			SourceName:      sourceNames[cont.SourceID],
+			SourceName:      info.name,
+			FaviconURL:      info.faviconURL,
 		}
 
 		if err == nil && evaluation != nil {

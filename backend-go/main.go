@@ -70,6 +70,7 @@ type AppContext struct {
 	ContentRepo    *repositories.ContentRepository
 	EvaluationRepo *repositories.EvaluationRepository
 	MessageRepo    *repositories.MessageRepository
+	ThreadRepo     *repositories.ThreadRepository
 }
 
 var appCtx *AppContext
@@ -100,6 +101,7 @@ func main() {
 	contentRepo := repositories.NewContentRepository(db)
 	evaluationRepo := repositories.NewEvaluationRepository(db)
 	messageRepo := repositories.NewMessageRepository(db)
+	threadRepo := repositories.NewThreadRepository(db)
 
 	// 初始化 services
 	contentService := services.NewContentService(rdb)
@@ -131,6 +133,7 @@ func main() {
 		ContentRepo:    contentRepo,
 		EvaluationRepo: evaluationRepo,
 		MessageRepo:    messageRepo,
+		ThreadRepo:     threadRepo,
 	}
 
 	log.Println("\n========== JunkFilter Backend ==========")
@@ -227,7 +230,7 @@ func loadConfig() *Config {
 		cfg.Redis.Password = password
 	}
 	if pythonAPI := os.Getenv("PYTHON_API_URL"); pythonAPI != "" {
-		cfg.PythonAPI.URL = pythonAPI
+		cfg.PythonAPI.URL = strings.TrimSpace(pythonAPI)
 	}
 	if proxyURL := os.Getenv("RSS_PROXY_URL"); proxyURL != "" {
 		cfg.Ingestion.ProxyURL = proxyURL
@@ -350,6 +353,9 @@ func startServer(port int) {
 	handlers.RegisterTaskChatRoutes(router, taskChatHandler)
 	handlers.RegisterAITaskRoutes(router, aiTaskHandler)
 	handlers.RegisterConfigRoutes(router, configHandler)
+
+	threadHandler := handlers.NewThreadHandler(appCtx.ThreadRepo, appCtx.MessageRepo)
+	handlers.RegisterThreadRoutes(router, threadHandler)
 
 	// 内容搜索路由（需要注入 db 到 context）
 	router.GET("/api/search", func(c *gin.Context) {

@@ -64,6 +64,8 @@ export const useAPI = () => {
       last_execution: source.last_fetch_time || source.created_at,
       created_at: source.created_at,
       updated_at: source.updated_at,
+      favicon_url: source.favicon_url || null,
+      platform: source.platform,
 
       // 保留原始数据以防需要
       _source: source,
@@ -289,12 +291,19 @@ export const useAPI = () => {
   const messages = {
     /**
      * 获取任务的消息历史
-     * 调用 Go 后端的 /api/tasks/{id}/messages
+     * 调用 Go 后端的 /api/tasks/{id}/messages 或 /api/threads/{id}/messages
      */
-    list: async (taskId, { limit = 50, offset = 0 } = {}) => {
+    list: async (taskId, { limit = 50, offset = 0, threadId = undefined } = {}) => {
       // taskId 可能是 "source-{id}" 格式，需要转换为原始 id 用于查询
       const actualTaskId = taskId.startsWith('source-') ? taskId.replace('source-', '') : taskId
       try {
+        // 如果指定了 threadId，从 thread 端点获取消息
+        if (threadId) {
+          return await request(
+            `/api/threads/${threadId}/messages`,
+            { baseUrl: apiUrl }
+          )
+        }
         return await request(
           `/api/tasks/${actualTaskId}/messages?limit=${limit}&offset=${offset}`,
           { baseUrl: apiUrl }
@@ -318,6 +327,7 @@ export const useAPI = () => {
         type: messageData.type || 'text',
         content: messageData.content || '',
         metadata: messageData.metadata || null,
+        thread_id: messageData.thread_id || undefined,
         ...messageData,
       }
 
@@ -496,18 +506,24 @@ export const useAPI = () => {
      * @param {string} message - 用户的问题或指令
      * @param {object} llmConfig - LLM 配置 {modelName, apiKey, baseUrl}
      * @param {object} evalConfig - 评估配置 {temperature, topP, maxTokens}
+     * @param {number|null} threadId - 子对话 ID (可选)
      * @param {function} onEvent - SSE 事件回调
      * @returns {function} 取消连接的函数
      */
-    taskChat: (taskId, message, llmConfig = {}, evalConfig = {}, onEvent) => {
-      // 处理参数重载：可能没有传递 llmConfig/evalConfig
+    taskChat: (taskId, message, llmConfig = {}, evalConfig = {}, threadId = null, onEvent) => {
+      // 处理参数重载：可能没有传递 llmConfig/evalConfig/threadId
       if (typeof llmConfig === 'function') {
         onEvent = llmConfig
         llmConfig = {}
         evalConfig = {}
+        threadId = null
       } else if (typeof evalConfig === 'function') {
         onEvent = evalConfig
         evalConfig = {}
+        threadId = null
+      } else if (typeof threadId === 'function') {
+        onEvent = threadId
+        threadId = null
       }
 
       // taskId 可能是 "source-{id}" 格式，需要转换为原始 id
@@ -520,6 +536,7 @@ export const useAPI = () => {
         // 发送 POST 请求，包含 LLM 和评估配置
         const requestBody = JSON.stringify({
           message: message,
+          thread_id: threadId || undefined,
           llm_config: {
             model_name: llmConfig.modelName,
             api_key: llmConfig.apiKey,

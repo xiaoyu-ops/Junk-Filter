@@ -28,7 +28,7 @@
     <div class="max-w-2xl bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-tl-sm p-4 shadow-sm">
       <!-- Markdown 渲染的内容 -->
       <div
-        class="prose prose-sm dark:prose-invert max-w-none"
+        class="prose prose-sm dark:prose-invert max-w-none text-gray-900 dark:text-gray-100"
         v-html="renderMarkdown(message.content)"
       />
       <p v-if="message.timestamp" class="text-xs text-gray-500 dark:text-gray-400 mt-2 opacity-70">
@@ -202,16 +202,16 @@ const formatTime = (timestamp) => {
 }
 
 :deep(p) {
-  @apply mb-2 leading-relaxed;
+  @apply mb-2 leading-relaxed text-gray-900 dark:text-gray-100;
 }
 
 :deep(ul),
 :deep(ol) {
-  @apply ml-4 mb-2;
+  @apply ml-4 mb-2 text-gray-900 dark:text-gray-100;
 }
 
 :deep(li) {
-  @apply mb-1;
+  @apply mb-1 text-gray-900 dark:text-gray-100;
 }
 
 :deep(code) {

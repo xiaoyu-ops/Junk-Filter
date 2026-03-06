@@ -35,13 +35,13 @@ func (mr *MessageRepository) Create(ctx context.Context, msg *models.Message) (i
 	}
 
 	query := `
-		INSERT INTO messages (task_id, role, type, content, metadata, message_type, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+		INSERT INTO messages (task_id, thread_id, role, type, content, metadata, message_type, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
 		RETURNING id
 	`
 
 	var id int64
-	err := mr.db.QueryRowContext(ctx, query, msg.TaskID, msg.Role, msg.Type, msg.Content, msg.Metadata, messageType).Scan(&id)
+	err := mr.db.QueryRowContext(ctx, query, msg.TaskID, msg.ThreadID, msg.Role, msg.Type, msg.Content, msg.Metadata, messageType).Scan(&id)
 	if err != nil {
 		log.Printf("Error creating message: %v", err)
 		return 0, fmt.Errorf("failed to create message: %w", err)
@@ -53,7 +53,7 @@ func (mr *MessageRepository) Create(ctx context.Context, msg *models.Message) (i
 // GetByTaskID retrieves all messages for a specific task
 func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]models.Message, error) {
 	query := `
-		SELECT id, task_id, role, type, content,
+		SELECT id, task_id, thread_id, role, type, content,
 		       CASE WHEN LENGTH(metadata::text) > 10000 THEN NULL ELSE metadata END,
 		       message_type, created_at, updated_at
 		FROM messages
@@ -78,6 +78,7 @@ func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]m
 		err := rows.Scan(
 			&msg.ID,
 			&msg.TaskID,
+			&msg.ThreadID,
 			&msg.Role,
 			&msg.Type,
 			&msg.Content,
@@ -105,6 +106,46 @@ func (mr *MessageRepository) GetByTaskID(ctx context.Context, taskID int64) ([]m
 	}
 
 	return messages, nil
+}
+
+// GetByThreadID retrieves all messages for a specific thread
+func (mr *MessageRepository) GetByThreadID(ctx context.Context, threadID int64) ([]models.Message, error) {
+	query := `
+		SELECT id, task_id, thread_id, role, type, content,
+		       CASE WHEN LENGTH(metadata::text) > 10000 THEN NULL ELSE metadata END,
+		       message_type, created_at, updated_at
+		FROM messages
+		WHERE thread_id = $1
+		ORDER BY created_at ASC
+	`
+
+	rows, err := mr.db.QueryContext(ctx, query, threadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query thread messages: %w", err)
+	}
+	defer rows.Close()
+
+	messages := []models.Message{}
+	for rows.Next() {
+		var msg models.Message
+		var createdAt, updatedAt time.Time
+		var messageType sql.NullString
+
+		err := rows.Scan(
+			&msg.ID, &msg.TaskID, &msg.ThreadID, &msg.Role, &msg.Type, &msg.Content,
+			&msg.Metadata, &messageType, &createdAt, &updatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		msg.CreatedAt = createdAt
+		msg.UpdatedAt = updatedAt
+		if messageType.Valid {
+			msg.MessageType = messageType.String
+		}
+		messages = append(messages, msg)
+	}
+	return messages, rows.Err()
 }
 
 // GetByID retrieves a single message by ID

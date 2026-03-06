@@ -80,9 +80,9 @@ func (ah *AITaskHandler) HandleCreateTaskWithAI(c *gin.Context) {
 
 	log.Printf("[AI Task] User input: %s", req.Message)
 
-	// Step 1: Get all default sources for matching
+	// Step 1: Get all sources (including disabled) as candidate pool for AI matching
 	ctx := context.Background()
-	sources, err := ah.sourceRepo.GetAll(ctx, true)
+	sources, err := ah.sourceRepo.GetAll(ctx, false)
 	if err != nil {
 		log.Printf("[AI Task] Error fetching sources: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch sources"})

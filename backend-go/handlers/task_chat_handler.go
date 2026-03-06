@@ -42,6 +42,7 @@ func NewTaskChatHandler(
 // TaskChatRequest represents a user query for task-specific consultation
 type TaskChatRequest struct {
 	Message    string                 `json:"message" binding:"required"`
+	ThreadID   *int64                 `json:"thread_id"`    // Optional thread ID for sub-conversations
 	LLMConfig  map[string]interface{} `json:"llm_config"`   // User-provided LLM configuration
 	EvalConfig map[string]interface{} `json:"eval_config"`  // User-provided evaluation configuration
 }
@@ -143,6 +144,7 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 
 	userMsg := &models.Message{
 		TaskID:    taskID,
+		ThreadID:  req.ThreadID,
 		Role:      "user",
 		Type:      "text",
 		Content:   req.Message,
@@ -180,7 +182,15 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 
 	log.Printf("[Task Chat] Calling Python at %s", pythonURL)
 
-	pythonReq, _ := http.NewRequest("POST", pythonURL, strings.NewReader(string(payloadBytes)))
+	pythonReq, err := http.NewRequest("POST", pythonURL, strings.NewReader(string(payloadBytes)))
+	if err != nil {
+		log.Printf("[Task Chat] Error creating request to Python API: %v (url=%s)", err, pythonURL)
+		sendSSEEvent(w, flusher, SSEEvent{
+			Status: "error",
+			Error:  "Failed to create Agent request: " + err.Error(),
+		})
+		return
+	}
 	pythonReq.Header.Set("Content-Type", "application/json")
 
 	resp, err := http.DefaultClient.Do(pythonReq)

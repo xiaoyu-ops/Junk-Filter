@@ -1,4 +1,4 @@
--- TrueSignal PostgreSQL Schema (Simplified for Demo)
+-- Junk Filter PostgreSQL Schema
 
 -- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";

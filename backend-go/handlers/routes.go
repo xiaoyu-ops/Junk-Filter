@@ -79,3 +79,12 @@ func RegisterAITaskRoutes(router *gin.Engine, handler *AITaskHandler) {
 	router.POST("/api/tasks/ai-create", handler.HandleCreateTaskWithAI)
 }
 
+// RegisterThreadRoutes registers thread-related routes
+func RegisterThreadRoutes(router *gin.Engine, handler *ThreadHandler) {
+	router.GET("/api/tasks/:id/threads", handler.ListThreads)
+	router.POST("/api/tasks/:id/threads", handler.CreateThread)
+	router.PUT("/api/threads/:id", handler.UpdateThread)
+	router.DELETE("/api/threads/:id", handler.DeleteThread)
+	router.GET("/api/threads/:id/messages", handler.GetThreadMessages)
+}
+

@@ -86,7 +86,7 @@ echo "[SUCCESS] Go backend started (Port 8080)"
 # ========== Phase 3: Optional Python Backend ==========
 if [ -f "backend-python/main.py" ]; then
     echo ""
-    echo "========== Phase 3: Starting Python Backend (Port 8081) =========="
+    echo "========== Phase 3: Starting Python Backend (Port 8083) =========="
     echo ""
 
     echo "[INFO] Starting Python backend with conda junkfilter environment..."
@@ -178,7 +178,7 @@ echo ""
 echo "Services Running:"
 echo "  * Docker:        PostgreSQL + Redis (Port 5432, 6379)"
 echo "  * Go Backend:    http://localhost:8080/api (Port 8080)"
-echo "  * Python:        http://localhost:8081 (Port 8081, optional)"
+echo "  * Python:        http://localhost:8083 (Port 8083, optional)"
 echo "  * Vue Frontend:  http://localhost:5173 (Port 5173)"
 echo ""
 echo "Next Steps:"

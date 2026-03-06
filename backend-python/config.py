@@ -71,7 +71,7 @@ class Settings(BaseSettings):
 
     # FastAPI 服务配置
     api_host: str = "0.0.0.0"
-    api_port: int = 8081
+    api_port: int = 8083
     api_workers: int = 4
 
     # 日志配置

@@ -13,6 +13,7 @@ type Source struct {
 	LastFetchTime        *time.Time
 	FetchIntervalSeconds int
 	Enabled              bool
+	FaviconURL           *string
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 }
@@ -44,6 +45,7 @@ type SourceResponse struct {
 	LastFetchTime        *time.Time `json:"last_fetch_time"`
 	FetchIntervalSeconds int        `json:"fetch_interval_seconds"`
 	Enabled              bool       `json:"enabled"`
+	FaviconURL           *string    `json:"favicon_url"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 }
@@ -58,6 +60,7 @@ func (s *Source) ToResponse() *SourceResponse {
 		LastFetchTime:        s.LastFetchTime,
 		FetchIntervalSeconds: s.FetchIntervalSeconds,
 		Enabled:              s.Enabled,
+		FaviconURL:           s.FaviconURL,
 		CreatedAt:            s.CreatedAt,
 		UpdatedAt:            s.UpdatedAt,
 	}

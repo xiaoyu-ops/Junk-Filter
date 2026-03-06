@@ -53,6 +53,7 @@ export const useTimelineStore = defineStore('timeline', () => {
       url: content.original_url || content.url || '',
       status: decisionInfo.text,
       statusColor: decisionInfo.color,
+      faviconUrl: contentItem.favicon_url || null,
       // 评估数据
       innovationScore: evaluation.innovation_score || 0,
       depthScore: evaluation.depth_score || 0,

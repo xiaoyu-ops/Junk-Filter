@@ -79,7 +79,7 @@ export const useConfigStore = defineStore('config', () => {
     sourceLoadError.value = null
 
     try {
-      const response = await fetch(`${API_BASE_URL}/sources`)
+      const response = await fetch(`${API_BASE_URL}/sources?enabled=true`)
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`)
