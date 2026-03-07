@@ -81,3 +81,6 @@ logs/
 # Windows
 desktop.ini
 .claude/settings.local.json
+
+# 面试回答文件（不提交）
+answer.md

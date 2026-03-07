@@ -127,7 +127,8 @@
       "Bash(node:*)",
       "Bash(docker ps:*)",
       "Bash(npx vue-tsc:*)",
-      "Bash(echo PYTHON_API_URL is now: $PYTHON_API_URL:*)"
+      "Bash(echo PYTHON_API_URL is now: $PYTHON_API_URL:*)",
+      "Bash(rm:*)"
     ]
   }
 }
