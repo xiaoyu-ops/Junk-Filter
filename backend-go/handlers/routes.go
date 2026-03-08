@@ -56,12 +56,6 @@ func RegisterMessageRoutes(router *gin.Engine, handler *MessageHandler) {
 	router.DELETE("/api/tasks/:id/messages", handler.DeleteTaskMessages)
 }
 
-// RegisterChatRoutes registers chat-related routes (RSS content evaluation - DEPRECATED)
-func RegisterChatRoutes(router *gin.Engine, handler *ChatHandler) {
-	// GET /api/chat/stream?taskId=1&message=hello (OLD - for RSS content evaluation)
-	router.GET("/api/chat/stream", handler.ChatStream)
-}
-
 // RegisterTaskChatRoutes registers task-specific chat routes (Agent tuning & consultation)
 func RegisterTaskChatRoutes(router *gin.Engine, handler *TaskChatHandler) {
 	// POST /api/tasks/{id}/chat - New endpoint for task-specific chat

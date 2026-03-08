@@ -30,6 +30,16 @@ if not exist "%PROJECT_ROOT%\.env" (
 echo [OK] Environment check passed
 echo.
 
+REM Initialize Conda (required for cmd.exe sessions without Conda in PATH)
+set "CONDA_ROOT=C:\Users\XIAOYU\miniconda3"
+if exist "%CONDA_ROOT%\condabin\conda.bat" (
+    call "%CONDA_ROOT%\condabin\conda.bat" activate base >nul 2>&1
+    echo [OK] Conda initialized from %CONDA_ROOT%
+) else (
+    echo [WARN] Conda not found at %CONDA_ROOT%, Python services may fail
+)
+echo.
+
 REM Clean up old processes
 echo ========== Cleaning Up Old Processes ==========
 echo.
@@ -102,7 +112,7 @@ if not exist "%PROJECT_ROOT%\backend-python\api_server.py" (
     goto phase4
 )
 
-start "JF-PyAPI Server" cmd /k "cd /d "%PROJECT_ROOT%\backend-python" && conda activate junkfilter && python api_server.py"
+start "JF-PyAPI Server" cmd /k "call "%CONDA_ROOT%\condabin\conda.bat" activate junkfilter && cd /d "%PROJECT_ROOT%\backend-python" && python api_server.py"
 
 echo [OK] Python API server started (Port 8083)
 timeout /t 2 /nobreak >nul
@@ -118,7 +128,7 @@ if not exist "%PROJECT_ROOT%\backend-python\main.py" (
     goto phase5
 )
 
-start "JF-PyConsumer" cmd /k "cd /d "%PROJECT_ROOT%\backend-python" && conda activate junkfilter && python main.py"
+start "JF-PyConsumer" cmd /k "call "%CONDA_ROOT%\condabin\conda.bat" activate junkfilter && cd /d "%PROJECT_ROOT%\backend-python" && python main.py"
 
 echo [OK] Python stream consumer started
 timeout /t 2 /nobreak >nul

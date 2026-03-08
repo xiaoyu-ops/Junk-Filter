@@ -506,12 +506,7 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
             model_name = llm_config.get("model_name")
             api_key = llm_config.get("api_key")
             base_url = llm_config.get("base_url")
-            logger.info(f"[LLM Call] ===== RECEIVED llm_config =====")
-            logger.info(f"[LLM Call] model_name: {model_name}")
-            logger.info(f"[LLM Call] api_key (FULL): {api_key}")
-            logger.info(f"[LLM Call] api_key length: {len(api_key) if api_key else 0}")
-            logger.info(f"[LLM Call] base_url: {base_url}")
-            logger.info(f"[LLM Call] ===== END llm_config =====")
+            logger.info(f"[LLM Call] Received llm_config: model={model_name}, base_url={base_url}, api_key={'***' + api_key[-4:] if api_key and len(api_key) > 4 else '(not set)'}")
 
         # 2. 如果用户没有提供，使用环境变量
         if not model_name:
@@ -530,7 +525,7 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
 
         logger.info(f"[LLM Call] Final Model: {model_name}")
         logger.info(f"[LLM Call] Final Base URL: {base_url}")
-        logger.info(f"[LLM Call] Final API Key length: {len(api_key) if api_key else 0}, First 30 chars: {api_key[:30] if api_key else 'None'}...")
+        logger.info(f"[LLM Call] Final API Key: {'***' + api_key[-4:] if api_key and len(api_key) > 4 else '(not set)'}")
         logger.info(f"[LLM Call] Temperature: {temperature}, Max Tokens: {max_tokens}")
 
         # 使用 OpenAI SDK 直接调用（而不是 LangChain）
@@ -547,7 +542,7 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
             client_kwargs["base_url"] = base_url
             logger.info(f"[LLM Call] Using custom base_url: {base_url}")
 
-        logger.info(f"[LLM Call] OpenAI client kwargs: {dict((k, v if k != 'api_key' else (v[:30]+'...' if v else None)) for k, v in client_kwargs.items())}")
+        logger.info(f"[LLM Call] OpenAI client kwargs: timeout={client_kwargs.get('timeout')}, base_url={client_kwargs.get('base_url', 'default')}")
 
         client = OpenAI(**client_kwargs)
 
@@ -592,7 +587,7 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
         logger.error(f"[LLM Call] Error message: {str(e)}")
         logger.error(f"[LLM Call] Model was: {model_name}")
         logger.error(f"[LLM Call] Base URL was: {base_url}")
-        logger.error(f"[LLM Call] API Key prefix: {api_key[:30] if api_key else 'None'}...")
+        logger.error(f"[LLM Call] API Key: {'***' + api_key[-4:] if api_key and len(api_key) > 4 else '(not set)'}")
         import traceback
         logger.error(f"[LLM Call] Traceback: {traceback.format_exc()}")
         raise
@@ -765,60 +760,6 @@ async def create_task_with_ai(request: AITaskCreateRequest):
             status_code=500,
             detail=f"Failed to analyze task: {str(e)}"
         )
-
-
-@app.get("/api/chat/stream")
-async def chat_stream(
-    task_id: str = Query(..., description="任务 ID"),
-    message: str = Query(..., description="用户消息")
-):
-    """
-    聊天流式接口（由 Go 后端 /api/chat/stream 调用）
-
-    用于 Go 后端向 Python 请求流式评估，然后转发给前端
-    """
-    async def stream_generator():
-        try:
-            logger.info(f"Chat stream for task {task_id}: {message[:50]}")
-
-            # 这里可以根据 task_id 获取上下文
-            # 暂时简单处理：直接评估消息内容
-
-            yield "data: " + json.dumps({"status": "thinking"}) + "\n\n"
-            await asyncio.sleep(0.2)
-
-            # 调用评估 Agent
-            result = await evaluator.evaluate(
-                title="User Query",
-                content=message,
-                url="",
-                temperature=settings.llm_temperature,
-                max_tokens=settings.llm_max_tokens,
-            )
-
-            # 返回评估结果
-            yield "data: " + json.dumps({
-                "status": "completed",
-                "text": result.get("tldr", ""),
-                "decision": result.get("decision", "BOOKMARK")
-            }) + "\n\n"
-
-        except Exception as e:
-            logger.error(f"✗ Chat stream failed: {e}")
-            yield "data: " + json.dumps({
-                "status": "error",
-                "error": str(e)
-            }) + "\n\n"
-
-    return StreamingResponse(
-        stream_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        }
-    )
 
 
 # ======================== 根路径 ========================

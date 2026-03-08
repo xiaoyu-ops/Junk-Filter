@@ -334,7 +334,6 @@ func startServer(port int) {
 	contentHandler := handlers.NewContentHandler(appCtx.ContentRepo, appCtx.EvaluationRepo, appCtx.SourceRepo, appCtx.DB)
 	evaluationHandler := handlers.NewEvaluationHandler(appCtx.EvaluationRepo)
 	messageHandler := handlers.NewMessageHandler(appCtx.MessageRepo)
-	chatHandler := handlers.NewChatHandler(appCtx.MessageRepo, appCtx.Config.PythonAPI.URL)
 	taskChatHandler := handlers.NewTaskChatHandler(
 		appCtx.MessageRepo,
 		appCtx.SourceRepo,
@@ -349,7 +348,6 @@ func startServer(port int) {
 	handlers.RegisterContentRoutes(router, contentHandler)
 	handlers.RegisterEvaluationRoutes(router, evaluationHandler)
 	handlers.RegisterMessageRoutes(router, messageHandler)
-	handlers.RegisterChatRoutes(router, chatHandler)
 	handlers.RegisterTaskChatRoutes(router, taskChatHandler)
 	handlers.RegisterAITaskRoutes(router, aiTaskHandler)
 	handlers.RegisterConfigRoutes(router, configHandler)
