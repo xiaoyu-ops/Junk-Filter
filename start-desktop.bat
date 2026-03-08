@@ -1,6 +1,6 @@
 @echo off
-REM JunkFilter Web Mode Startup Script (Windows)
-REM All backends run in Docker, frontend opens in browser
+REM JunkFilter Desktop App Startup Script (Windows)
+REM All backends run in Docker, only the Tauri desktop app runs natively
 
 setlocal enabledelayedexpansion
 
@@ -10,7 +10,7 @@ set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 
 echo.
 echo ========================================
-echo    JunkFilter Startup (Web Mode)
+echo    JunkFilter Desktop App Startup
 echo ========================================
 echo.
 
@@ -22,6 +22,23 @@ if not exist "%PROJECT_ROOT%\docker-compose.yml" (
 
 if not exist "%PROJECT_ROOT%\.env" (
     echo [ERROR] .env file not found
+    pause
+    exit /b 1
+)
+
+REM Check Rust/Cargo
+set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+where cargo >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] Rust/Cargo not found. Please install Rust: https://rustup.rs
+    pause
+    exit /b 1
+)
+
+REM Check MSVC Build Tools
+set "VCVARS=D:\visual studio\VC\Auxiliary\Build\vcvars64.bat"
+if not exist "!VCVARS!" (
+    echo [ERROR] Visual Studio C++ Build Tools not found
     pause
     exit /b 1
 )
@@ -39,7 +56,8 @@ REM Clean up
 echo ========== Cleaning Up ==========
 echo.
 
-taskkill /FI "WINDOWTITLE eq JF-Frontend*" >nul 2>&1
+taskkill /F /IM "junk-filter.exe" >nul 2>&1
+taskkill /FI "WINDOWTITLE eq JF-Desktop*" >nul 2>&1
 
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5173 " ^| findstr "LISTENING"') do (
     taskkill /F /PID %%p >nul 2>&1
@@ -67,6 +85,7 @@ REM Wait for services to be healthy
 echo [INFO] Waiting for services to be ready...
 timeout /t 8 /nobreak >nul
 
+REM Quick health check
 docker exec junkfilter-db pg_isready -U junkfilter >nul 2>&1
 if errorlevel 1 (
     echo [WARN] PostgreSQL may not be ready yet, waiting...
@@ -81,8 +100,8 @@ echo [OK] Python API ready (Port 8083)
 echo [OK] Python evaluator ready
 echo.
 
-REM Phase 2: Start Web Frontend
-echo ========== Phase 2: Starting Web Frontend (Port 5173) ==========
+REM Phase 2: Start Tauri Desktop App
+echo ========== Phase 2: Starting Desktop App ==========
 echo.
 
 if not exist "%PROJECT_ROOT%\frontend-vue\node_modules" (
@@ -92,7 +111,10 @@ if not exist "%PROJECT_ROOT%\frontend-vue\node_modules" (
     cd /d "%PROJECT_ROOT%"
 )
 
-start "JF-Frontend" cmd /k "cd /d "%PROJECT_ROOT%\frontend-vue" && npm run dev"
+echo [INFO] Launching Tauri desktop app...
+echo     First launch may take 3-5 min for Rust compilation...
+echo.
+start "JF-Desktop App" cmd /k "call "!VCVARS!" >nul 2>&1 && set "PATH=%USERPROFILE%\.cargo\bin;%PATH%" && cd /d "%PROJECT_ROOT%\frontend-vue" && npm run tauri:dev"
 
 timeout /t 5 /nobreak >nul
 
@@ -107,9 +129,7 @@ echo   [Docker]  Redis           :6379
 echo   [Docker]  Go Backend      :8080
 echo   [Docker]  Python API      :8083
 echo   [Docker]  Python Evaluator (background)
-echo   [Native]  Web Frontend    http://localhost:5173
-echo.
-echo   Open browser: http://localhost:5173
+echo   [Native]  Tauri Desktop App
 echo.
 echo   To stop backends: docker-compose down
 echo   To view logs:     docker-compose logs -f

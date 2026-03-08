@@ -130,7 +130,14 @@
       "Bash(echo PYTHON_API_URL is now: $PYTHON_API_URL:*)",
       "Bash(rm:*)",
       "Bash(conda run:*)",
-      "Bash(cmd.exe:*)"
+      "Bash(cmd.exe:*)",
+      "Bash(rustc:*)",
+      "Bash(npx tauri:*)",
+      "Bash(export:*)",
+      "Read(//c/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/2022/BuildTools/VC/Auxiliary/Build/**)",
+      "Read(//c/Program Files/**)",
+      "Bash(docker:*)"
     ]
   }
 }

@@ -226,6 +226,12 @@ func loadConfig() *Config {
 	if sslMode := os.Getenv("DB_SSL_MODE"); sslMode != "" {
 		cfg.Database.SSLMode = sslMode
 	}
+	if redisHost := os.Getenv("REDIS_HOST"); redisHost != "" {
+		cfg.Redis.Host = redisHost
+	}
+	if redisPort := os.Getenv("REDIS_PORT"); redisPort != "" {
+		fmt.Sscanf(redisPort, "%d", &cfg.Redis.Port)
+	}
 	if password := os.Getenv("REDIS_PASSWORD"); password != "" {
 		cfg.Redis.Password = password
 	}

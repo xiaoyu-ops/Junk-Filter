@@ -169,10 +169,9 @@
             <span>&bull;</span>
             <a
               v-if="readerStore.selectedArticle.url"
-              :href="readerStore.selectedArticle.url"
-              target="_blank"
-              rel="noopener"
-              class="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline"
+              href="#"
+              @click.prevent="openUrl(readerStore.selectedArticle.url)"
+              class="flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
             >
               Original
               <span class="material-symbols-outlined text-[14px]">open_in_new</span>
@@ -232,8 +231,14 @@ import { useReaderStore } from '@/stores/useReaderStore'
 const route = useRoute()
 const readerStore = useReaderStore()
 
-const openUrl = (url) => {
-  if (url) window.open(url, '_blank')
+const openUrl = async (url) => {
+  if (!url) return
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell')
+    await open(url)
+  } catch {
+    window.open(url, '_blank')
+  }
 }
 
 onMounted(async () => {

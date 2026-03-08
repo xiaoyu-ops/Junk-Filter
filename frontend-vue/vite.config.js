@@ -12,9 +12,12 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
-    open: true,
+    open: !process.env.TAURI_ENV_PLATFORM,
     hmr: true,
   },
+  // Tauri expects a fixed port, prevent vite from obscuring rust errors
+  clearScreen: false,
+  envPrefix: ['VITE_', 'TAURI_ENV_'],
   build: {
     target: 'esnext',
     minify: 'terser',

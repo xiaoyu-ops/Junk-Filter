@@ -372,8 +372,12 @@ const totalWidth = computed(() => {
 /**
  * 在新标签页打开 URL
  */
-const openUrl = (url) => {
-  if (url) {
+const openUrl = async (url) => {
+  if (!url) return
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell')
+    await open(url)
+  } catch {
     window.open(url, '_blank')
   }
 }

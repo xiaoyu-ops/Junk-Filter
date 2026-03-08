@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # PostgreSQL 数据库
   postgres:
@@ -39,10 +37,74 @@ services:
       timeout: 5s
       retries: 5
 
-  # P0: Python 评估器 - 第 1 个 (消费者 evaluator-1)
-  python-evaluator-1:
+  # Go 后端 (API 网关 + RSS 抓取)
+  go-backend:
+    build: ./backend-go
+    container_name: junkfilter-go
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-junkfilter}
+      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
+      DB_NAME: ${DB_NAME:-junkfilter}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PYTHON_API_URL: http://python-api:8083
+      RSS_PROXY_URL: ${RSS_PROXY_URL:-}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - junkfilter-network
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Python API 服务 (FastAPI - LLM 聊天/评估接口)
+  python-api:
     build: ./backend-python
-    container_name: junkfilter-python-1
+    container_name: junkfilter-api
+    command: python api_server.py
+    ports:
+      - "8083:8083"
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-junkfilter}
+      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
+      DB_NAME: ${DB_NAME:-junkfilter}
+      REDIS_URL: redis://redis:6379/0
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_MODEL_ID: ${LLM_MODEL_ID}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - junkfilter-network
+    restart: on-failure
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Python Stream Consumer (Redis Stream 消费者 - 自动评估)
+  python-evaluator:
+    build: ./backend-python
+    container_name: junkfilter-evaluator
+    command: python main.py
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -54,66 +116,6 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL}
       LLM_MODEL_ID: ${LLM_MODEL_ID}
       WORKER_ID: 1
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - junkfilter-network
-    restart: on-failure
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # P0: Python 评估器 - 第 2 个 (消费者 evaluator-2)
-  python-evaluator-2:
-    build: ./backend-python
-    container_name: junkfilter-python-2
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-junkfilter}
-      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
-      DB_NAME: ${DB_NAME:-junkfilter}
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      LLM_BASE_URL: ${LLM_BASE_URL}
-      LLM_MODEL_ID: ${LLM_MODEL_ID}
-      WORKER_ID: 2
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - junkfilter-network
-    restart: on-failure
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # P0: Python 评估器 - 第 3 个 (消费者 evaluator-3)
-  python-evaluator-3:
-    build: ./backend-python
-    container_name: junkfilter-python-3
-    environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-junkfilter}
-      DB_PASSWORD: ${DB_PASSWORD:-junkfilter123}
-      DB_NAME: ${DB_NAME:-junkfilter}
-      REDIS_URL: redis://redis:6379/0
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      LLM_BASE_URL: ${LLM_BASE_URL}
-      LLM_MODEL_ID: ${LLM_MODEL_ID}
-      WORKER_ID: 3
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:

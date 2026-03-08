@@ -1,9 +1,3 @@
-# 脚本文件夹（允许追踪，但排除特定临时文件）
-scripts/*
-!scripts/
-!scripts/*.bat
-!scripts/*.sh
-!scripts/README.md
 # 过程md文件夹
 description/
 CLAUDE.md
@@ -26,13 +20,15 @@ test_llm_config.py
 
 # Go
 backend-go/vendor/
+backend-go/*.exe
 *.out
 *.a
 *.so
 .claude
+
 # Python
-backend-python/__pycache__/
-backend-python/*.pyc
+__pycache__/
+*.pyc
 backend-python/.venv/
 backend-python/venv/
 backend-python/env/
@@ -43,11 +39,20 @@ backend-python/dist/
 backend-python/build/
 
 # Node.js
-backend-mock/node_modules/
-frontend-vue/node_modules/
+node_modules/
 package-lock.json
 npm-debug.log
 yarn-error.log
+
+# Tauri / Rust
+frontend-vue/src-tauri/target/
+frontend-vue/src-tauri/gen/
+frontend-vue/src-tauri/Cargo.lock
+frontend-vue/src-tauri/icons/ios/
+frontend-vue/src-tauri/icons/android/
+frontend-vue/src-tauri/icons/Square*.png
+frontend-vue/src-tauri/icons/StoreLogo.png
+frontend-vue/dist/
 
 # IDE
 .vscode/
@@ -62,7 +67,6 @@ yarn-error.log
 Thumbs.db
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 
 # Logs

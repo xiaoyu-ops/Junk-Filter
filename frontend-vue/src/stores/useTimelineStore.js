@@ -179,7 +179,7 @@ export const useTimelineStore = defineStore('timeline', () => {
    * 终止评估：将所有 PENDING/PROCESSING 内容标记为 DISCARDED
    */
   const isStopping = ref(false)
-  const isStopped = ref(false)
+  const isStopped = ref(true)
   const stopEvaluation = async () => {
     isStopping.value = true
     try {
