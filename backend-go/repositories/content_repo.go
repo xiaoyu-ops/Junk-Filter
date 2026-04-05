@@ -30,6 +30,7 @@ func (cr *ContentRepository) Create(ctx context.Context, req *models.CreateConte
 		OriginalURL:  req.OriginalURL,
 		ContentHash:  req.ContentHash,
 		CleanContent: req.CleanContent,
+		ImageURLs:    req.ImageURLs,
 		PublishedAt:  req.PublishedAt,
 		IngestedAt:   time.Now(),
 		Status:       "PENDING",
@@ -39,11 +40,11 @@ func (cr *ContentRepository) Create(ctx context.Context, req *models.CreateConte
 
 	err := cr.db.QueryRowContext(ctx,
 		`INSERT INTO content (task_id, source_id, platform, author_name, title, original_url,
-		                      content_hash, clean_content, published_at, ingested_at, status, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		                      content_hash, clean_content, image_urls, published_at, ingested_at, status, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		 RETURNING id, task_id, created_at, updated_at`,
 		content.TaskID, content.SourceID, content.Platform, content.AuthorName, content.Title,
-		content.OriginalURL, content.ContentHash, content.CleanContent, content.PublishedAt,
+		content.OriginalURL, content.ContentHash, content.CleanContent, content.ImageURLs, content.PublishedAt,
 		content.IngestedAt, content.Status, content.CreatedAt, content.UpdatedAt,
 	).Scan(&content.ID, &content.TaskID, &content.CreatedAt, &content.UpdatedAt)
 
@@ -60,12 +61,12 @@ func (cr *ContentRepository) GetByID(ctx context.Context, id int64) (*models.Con
 
 	err := cr.db.QueryRowContext(ctx,
 		`SELECT id, task_id, source_id, platform, author_name, title, original_url,
-		        content_hash, clean_content, published_at, ingested_at, status, created_at, updated_at
+		        content_hash, clean_content, image_urls, published_at, ingested_at, status, created_at, updated_at
 		 FROM content WHERE id = $1`,
 		id,
 	).Scan(&content.ID, &content.TaskID, &content.SourceID, &content.Platform, &content.AuthorName,
 		&content.Title, &content.OriginalURL, &content.ContentHash, &content.CleanContent,
-		&publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
+		&content.ImageURLs, &publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -88,12 +89,12 @@ func (cr *ContentRepository) GetByTaskID(ctx context.Context, taskID uuid.UUID) 
 
 	err := cr.db.QueryRowContext(ctx,
 		`SELECT id, task_id, source_id, platform, author_name, title, original_url,
-		        content_hash, clean_content, published_at, ingested_at, status, created_at, updated_at
+		        content_hash, clean_content, image_urls, published_at, ingested_at, status, created_at, updated_at
 		 FROM content WHERE task_id = $1`,
 		taskID,
 	).Scan(&content.ID, &content.TaskID, &content.SourceID, &content.Platform, &content.AuthorName,
 		&content.Title, &content.OriginalURL, &content.ContentHash, &content.CleanContent,
-		&publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
+		&content.ImageURLs, &publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -116,12 +117,12 @@ func (cr *ContentRepository) GetByURL(ctx context.Context, url string) (*models.
 
 	err := cr.db.QueryRowContext(ctx,
 		`SELECT id, task_id, source_id, platform, author_name, title, original_url,
-		        content_hash, clean_content, published_at, ingested_at, status, created_at, updated_at
+		        content_hash, clean_content, image_urls, published_at, ingested_at, status, created_at, updated_at
 		 FROM content WHERE original_url = $1`,
 		url,
 	).Scan(&content.ID, &content.TaskID, &content.SourceID, &content.Platform, &content.AuthorName,
 		&content.Title, &content.OriginalURL, &content.ContentHash, &content.CleanContent,
-		&publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
+		&content.ImageURLs, &publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -144,12 +145,12 @@ func (cr *ContentRepository) GetByHash(ctx context.Context, hash string) (*model
 
 	err := cr.db.QueryRowContext(ctx,
 		`SELECT id, task_id, source_id, platform, author_name, title, original_url,
-		        content_hash, clean_content, published_at, ingested_at, status, created_at, updated_at
+		        content_hash, clean_content, image_urls, published_at, ingested_at, status, created_at, updated_at
 		 FROM content WHERE content_hash = $1`,
 		hash,
 	).Scan(&content.ID, &content.TaskID, &content.SourceID, &content.Platform, &content.AuthorName,
 		&content.Title, &content.OriginalURL, &content.ContentHash, &content.CleanContent,
-		&publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
+		&content.ImageURLs, &publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -168,7 +169,7 @@ func (cr *ContentRepository) GetByHash(ctx context.Context, hash string) (*model
 // List retrieves multiple contents with filtering
 func (cr *ContentRepository) List(ctx context.Context, filter *models.ContentFilter) ([]*models.Content, error) {
 	query := `SELECT id, task_id, source_id, platform, author_name, title, original_url,
-	                 content_hash, clean_content, published_at, ingested_at, status, created_at, updated_at
+	                 content_hash, clean_content, image_urls, published_at, ingested_at, status, created_at, updated_at
 	          FROM content WHERE 1=1`
 
 	args := []interface{}{}
@@ -203,7 +204,7 @@ func (cr *ContentRepository) List(ctx context.Context, filter *models.ContentFil
 
 		err := rows.Scan(&content.ID, &content.TaskID, &sourceID, &content.Platform, &content.AuthorName,
 			&content.Title, &content.OriginalURL, &content.ContentHash, &content.CleanContent,
-			&publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
+			&content.ImageURLs, &publishedAt, &content.IngestedAt, &content.Status, &content.CreatedAt, &content.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}

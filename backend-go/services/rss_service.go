@@ -192,6 +192,17 @@ func (rs *RSSService) processItem(ctx context.Context, source *models.Source, it
 	// Sanitize the item
 	item = utils.SanitizeFeedItem(item)
 
+	// Skip articles with too little content (RSS-only excerpt, not worth evaluating)
+	if len([]rune(item.Content)) < 200 {
+		log.Printf("[Skip] Content too short (%d runes), skipping: %s", len([]rune(item.Content)), item.Title)
+		return
+	}
+
+	// Check author filter before dedup (save resources)
+	if source.ShouldFilterAuthor(item.Author) {
+		return // Skip filtered author
+	}
+
 	// Check for duplicates
 	contentHash, isDuplicate, err := rs.dedupService.ValidateContent(
 		ctx, item.URL, item.Title, item.Content,
@@ -220,6 +231,7 @@ func (rs *RSSService) processItem(ctx context.Context, source *models.Source, it
 		OriginalURL:  item.URL,
 		ContentHash:  contentHash,
 		CleanContent: item.Content,
+		ImageURLs:    item.ImageURLs,
 		PublishedAt:  item.PublishedAt,
 	}
 
@@ -244,6 +256,16 @@ func (rs *RSSService) processItem(ctx context.Context, source *models.Source, it
 	}
 
 	log.Printf("Ingested: %s (ID: %d)", item.Title, content.ID)
+}
+
+// SetProxyURL updates the RSS proxy at runtime
+func (rs *RSSService) SetProxyURL(proxyURL string) {
+	rs.parser.SetProxyURL(proxyURL)
+}
+
+// GetProxyURL returns the current proxy URL
+func (rs *RSSService) GetProxyURL() string {
+	return rs.parser.GetProxyURL()
 }
 
 // FetchSourceOnDemand fetches a specific source immediately

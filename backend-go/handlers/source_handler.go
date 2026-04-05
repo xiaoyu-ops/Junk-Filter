@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
@@ -145,6 +146,62 @@ func (sh *SourceHandler) FetchSourceNow(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Source fetch triggered"})
+}
+
+// UpdateAuthorFilter sets the author filter for a source
+// PUT /api/sources/:id/author-filter
+func (sh *SourceHandler) UpdateAuthorFilter(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid source ID"})
+		return
+	}
+
+	var req models.AuthorFilter
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate mode
+	if req.Mode != "" && req.Mode != "whitelist" && req.Mode != "blacklist" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "mode must be 'whitelist', 'blacklist', or empty"})
+		return
+	}
+
+	filterJSON, _ := json.Marshal(req)
+	if err := sh.sourceRepo.UpdateAuthorFilter(c.Request.Context(), id, string(filterJSON)); err != nil {
+		log.Printf("Error updating author filter: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update author filter"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Author filter updated", "author_filter": req})
+}
+
+// GetSourceAuthors returns distinct authors found in content for a source
+// GET /api/sources/:id/authors
+func (sh *SourceHandler) GetSourceAuthors(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid source ID"})
+		return
+	}
+
+	authors, err := sh.sourceRepo.GetDistinctAuthors(c.Request.Context(), id)
+	if err != nil {
+		log.Printf("Error getting authors: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get authors"})
+		return
+	}
+
+	if authors == nil {
+		authors = []string{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"authors": authors})
 }
 
 // SearchSources searches for RSS sources by query and optional platform

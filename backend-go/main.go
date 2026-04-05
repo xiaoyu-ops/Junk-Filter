@@ -145,7 +145,7 @@ func main() {
 		log.Println("RSS Proxy: disabled (set RSS_PROXY_URL to enable)")
 	}
 	log.Printf("Server: listening on :%d\n", cfg.Server.Port)
-	log.Println("========================================\n")
+	log.Println("========================================")
 
 	// 启动 RSS 服务（异步，不会阻塞）
 	fetchInterval := 1 * time.Hour
@@ -164,9 +164,7 @@ func main() {
 	defer rssService.Stop()
 
 	// 启动 HTTP 服务（在后台异步运行）
-	log.Println("DEBUG: About to call startServer()")
 	go startServer(cfg.Server.Port)
-	log.Println("DEBUG: startServer() started in background")
 
 	// 保持主程序运行
 	select {}
@@ -317,18 +315,20 @@ func startServer(port int) {
 
 		if isAllowed {
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(appCtx.Config.CORS.AllowedMethods, ", "))
+			c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(appCtx.Config.CORS.AllowedHeaders, ", "))
+			c.Writer.Header().Set("Access-Control-Max-Age", fmt.Sprintf("%d", appCtx.Config.CORS.MaxAge))
 			if appCtx.Config.CORS.AllowCredentials {
 				c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 			}
 		}
 
-		// 只允许配置中的方法和头
-		c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(appCtx.Config.CORS.AllowedMethods, ", "))
-		c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(appCtx.Config.CORS.AllowedHeaders, ", "))
-		c.Writer.Header().Set("Access-Control-Max-Age", fmt.Sprintf("%d", appCtx.Config.CORS.MaxAge))
-
 		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
+			if isAllowed {
+				c.AbortWithStatus(204)
+			} else {
+				c.AbortWithStatus(403)
+			}
 			return
 		}
 
@@ -361,6 +361,29 @@ func startServer(port int) {
 	threadHandler := handlers.NewThreadHandler(appCtx.ThreadRepo, appCtx.MessageRepo)
 	handlers.RegisterThreadRoutes(router, threadHandler)
 
+	notificationHandler := handlers.NewNotificationHandler(appCtx.DB, appCtx.Redis, appCtx.Config.PythonAPI.URL)
+	handlers.RegisterNotificationRoutes(router, notificationHandler)
+
+	// RSS 代理配置路由
+	router.GET("/api/config/rss-proxy", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"proxy_url": appCtx.RSSService.GetProxyURL(),
+		})
+	})
+	router.PUT("/api/config/rss-proxy", func(c *gin.Context) {
+		var req struct {
+			ProxyURL string `json:"proxy_url"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		appCtx.RSSService.SetProxyURL(req.ProxyURL)
+		appCtx.Config.Ingestion.ProxyURL = req.ProxyURL
+		log.Printf("RSS Proxy updated: %s", req.ProxyURL)
+		c.JSON(200, gin.H{"message": "RSS proxy updated", "proxy_url": req.ProxyURL})
+	})
+
 	// 内容搜索路由（需要注入 db 到 context）
 	router.GET("/api/search", func(c *gin.Context) {
 		c.Set("db", appCtx.DB)
@@ -372,6 +395,34 @@ func startServer(port int) {
 		c.JSON(200, gin.H{
 			"status": "ok",
 			"time":   time.Now(),
+		})
+	})
+
+	// 管理端点：清空 Redis Stream 并重置消费者组游标
+	router.POST("/api/admin/purge-stream", func(c *gin.Context) {
+		ctx := context.Background()
+		streamName := "ingestion_queue"
+		groupName := "evaluators"
+
+		// 删除整个 stream（包括所有消息和消费者组）
+		deleted, err := appCtx.Redis.Del(ctx, streamName).Result()
+		if err != nil {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("failed to delete stream: %v", err)})
+			return
+		}
+
+		// 重新创建消费者组（MKSTREAM 会自动创建 stream）
+		_, err = appCtx.Redis.XGroupCreateMkStream(ctx, streamName, groupName, "0-0").Result()
+		if err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+			c.JSON(500, gin.H{"error": fmt.Sprintf("failed to recreate consumer group: %v", err)})
+			return
+		}
+
+		log.Printf("[Admin] Purged stream '%s' (deleted=%d), recreated consumer group '%s'", streamName, deleted, groupName)
+		c.JSON(200, gin.H{
+			"message":        "Stream purged and consumer group reset",
+			"stream_deleted":  deleted > 0,
+			"group_recreated": true,
 		})
 	})
 

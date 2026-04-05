@@ -31,13 +31,13 @@
       ref="containerRef"
       class="flex-1 overflow-y-auto space-y-4 p-6"
     >
-      <!-- 消息列表循环 -->
+      <!-- 消息列表循环（跳过正在处理中的空消息） -->
       <template v-for="msg in messages" :key="msg.id">
-        <ChatMessage :message="msg" />
+        <ChatMessage v-if="!msg.processing || msg.content" :message="msg" />
       </template>
 
-      <!-- AI 流式加载状态 -->
-      <div v-if="isLoading" class="flex gap-4 animate-slide-in">
+      <!-- AI 流式加载状态：仅在没有任何 AI 消息正在显示内容时才展示 -->
+      <div v-if="isLoading && !hasAiContent" class="flex gap-4 animate-slide-in">
         <div class="flex-shrink-0 w-8 h-8 rounded-full bg-indigo-600 dark:bg-indigo-500 flex items-center justify-center">
           <span class="material-icons-outlined text-sm text-white">smart_toy</span>
         </div>
@@ -76,7 +76,7 @@
       <div class="relative flex items-center w-full">
         <textarea
           v-model="inputText"
-          @keydown.enter.exact="handleSendMessage"
+          @keydown.enter.exact.prevent="handleSendMessage"
           @keydown.shift.enter="insertNewline"
           :disabled="isLoading"
           placeholder="输入消息... (Shift+Enter 换行)"
@@ -96,7 +96,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useTaskStore } from '@/stores/useTaskStore'
 import { useConfigStore } from '@/stores/useConfigStore'
 import { useAPI } from '@/composables/useAPI'
@@ -128,6 +128,13 @@ const isLoading = ref(false)
 
 // 当前 AI 消息 ID（用于更新流式文本）
 const currentAiMessageId = ref(null)
+
+// 当前 AI 占位消息是否已有内容（用于判断是否隐藏 loading 动画）
+const hasAiContent = computed(() => {
+  if (!currentAiMessageId.value) return false
+  const msg = messages.value.find(m => m.id === currentAiMessageId.value)
+  return msg && msg.content && msg.content.length > 0
+})
 
 // SSE 关闭函数
 const closeSseConnection = ref(null)
@@ -264,19 +271,6 @@ const handleSendMessage = async (e) => {
   messages.value.push(userMessage)
   inputText.value = ''
 
-  // 保存用户消息到后端
-  try {
-    await messagesAPI.save(taskStore.selectedTaskId, {
-      role: 'user',
-      type: 'text',
-      content: trimmedText,
-      thread_id: taskStore.selectedThreadId || undefined,
-    })
-  } catch (error) {
-    console.error('保存用户消息失败:', error)
-    // 即使保存失败也继续处理 AI 回复
-  }
-
   // 设置加载状态
   isLoading.value = true
 
@@ -358,6 +352,9 @@ const handleSSEResponse = async (userInput) => {
             messages.value[msgIndex] = { ...messages.value[msgIndex] }
           }
         } else if (eventData.status === 'completed') {
+          // 收到完成事件，立即关闭 loading 状态
+          isLoading.value = false
+
           // 处理完成，更新自然语言回复
           if (eventData.result) {
             const result = eventData.result
@@ -384,8 +381,10 @@ const handleSSEResponse = async (userInput) => {
           }
         } else if (eventData.status === 'stream_end') {
           // 流完成标记，正常结束
+          isLoading.value = false
           console.log('[Task Chat] 流正常完成')
         } else if (eventData.status === 'error') {
+          isLoading.value = false
           // 错误处理
           const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
           if (msgIndex !== -1) {
@@ -415,24 +414,6 @@ const handleSSEResponse = async (userInput) => {
       }, 30000)
     })
 
-    // 保存 AI 消息到后端
-    if (aiResponseContent) {
-      try {
-        await messagesAPI.save(taskStore.selectedTaskId, {
-          role: 'ai',
-          type: 'text',
-          content: aiResponseContent,
-          thread_id: taskStore.selectedThreadId || undefined,
-          metadata: JSON.stringify({
-            messageType: 'ai_reply',
-            parameterUpdates: parameterUpdates,
-            referencedCards: referencedCards,
-          }),
-        })
-      } catch (error) {
-        console.error('保存 AI 消息失败:', error)
-      }
-    }
   } catch (error) {
     console.error('[Task Chat] 连接失败:', error)
 

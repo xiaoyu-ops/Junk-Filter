@@ -190,14 +190,64 @@
           </div>
         </div>
 
-        <!-- Article Body -->
-        <div class="prose prose-gray dark:prose-invert max-w-none text-base text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">{{ readerStore.selectedArticle.content }}</div>
+        <!-- Cover Image (first image only) -->
+        <div v-if="coverImage" class="mb-8">
+          <img
+            :src="coverImage"
+            alt="Cover"
+            class="w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover max-h-[400px] bg-gray-50 dark:bg-gray-800 cursor-pointer"
+            loading="lazy"
+            @click="previewImage = coverImage"
+            @error="$event.target.style.display = 'none'"
+          />
+        </div>
+
+        <!-- Article Body (markdown rendered) -->
+        <div
+          class="prose prose-gray dark:prose-invert max-w-none prose-headings:font-semibold prose-p:leading-relaxed prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-img:rounded-lg"
+          v-html="renderedContent"
+        ></div>
+
+        <!-- Extra Images (remaining images after cover) -->
+        <div v-if="extraImages.length > 0" class="mt-8 space-y-4">
+          <h4 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Images</h4>
+          <div class="grid gap-3" :class="extraImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2'">
+            <img
+              v-for="(imgUrl, idx) in extraImages"
+              :key="idx"
+              :src="imgUrl"
+              :alt="`Image ${idx + 2}`"
+              class="w-full rounded-lg border border-gray-200 dark:border-gray-700 object-cover max-h-[300px] bg-gray-50 dark:bg-gray-800 cursor-pointer hover:opacity-90 transition-opacity"
+              loading="lazy"
+              @click="previewImage = imgUrl"
+              @error="$event.target.style.display = 'none'"
+            />
+          </div>
+        </div>
 
         <!-- Reasoning -->
         <div v-if="readerStore.selectedArticle.reasoning" class="mt-10 pt-6 border-t border-gray-100 dark:border-gray-700">
           <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">AI Reasoning</h4>
           <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ readerStore.selectedArticle.reasoning }}</p>
         </div>
+
+        <!-- Image Preview Modal -->
+        <Teleport to="body">
+          <Transition
+            enter-active-class="transition-opacity duration-200"
+            enter-from-class="opacity-0"
+            leave-active-class="transition-opacity duration-200"
+            leave-to-class="opacity-0"
+          >
+            <div
+              v-if="previewImage"
+              class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center cursor-pointer"
+              @click="previewImage = null"
+            >
+              <img :src="previewImage" class="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+            </div>
+          </Transition>
+        </Teleport>
 
         <!-- Bottom Actions -->
         <div class="mt-10 pt-6 border-t border-gray-100 dark:border-gray-700 flex items-center justify-between">
@@ -224,12 +274,31 @@
 </template>
 
 <script setup>
-import { onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useReaderStore } from '@/stores/useReaderStore'
+import { useMarkdown } from '@/composables/useMarkdown'
 
 const route = useRoute()
 const readerStore = useReaderStore()
+const { renderMarkdown } = useMarkdown()
+const previewImage = ref(null)
+
+const coverImage = computed(() => {
+  const urls = readerStore.selectedArticle?.imageUrls
+  return urls && urls.length > 0 ? urls[0] : null
+})
+
+const extraImages = computed(() => {
+  const urls = readerStore.selectedArticle?.imageUrls
+  return urls && urls.length > 1 ? urls.slice(1) : []
+})
+
+const renderedContent = computed(() => {
+  const text = readerStore.selectedArticle?.content
+  if (!text) return ''
+  return renderMarkdown(text)
+})
 
 const openUrl = async (url) => {
   if (!url) return

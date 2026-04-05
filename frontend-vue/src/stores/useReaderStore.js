@@ -9,7 +9,7 @@ export const useReaderStore = defineStore('reader', () => {
   const expandedSources = ref({})
   const isLoading = ref(false)
 
-  const API_BASE_URL = 'http://localhost:8080/api'
+  const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api`
 
   /**
    * AI score label mapping based on average score
@@ -67,6 +67,7 @@ export const useReaderStore = defineStore('reader', () => {
       decision: evaluation.decision || 'BOOKMARK',
       keyConcepts: evaluation.key_concepts || [],
       reasoning: evaluation.reasoning || '',
+      imageUrls: item.image_urls || [],
     }
   }
 

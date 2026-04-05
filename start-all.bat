@@ -1,6 +1,7 @@
 @echo off
-REM JunkFilter Web Mode Startup Script (Windows)
-REM All backends run in Docker, frontend opens in browser
+REM JunkFilter Local Dev Startup Script (Windows)
+REM Docker: PostgreSQL + Redis only
+REM Native: Go backend, Python API, Python evaluator, Vue frontend
 
 setlocal enabledelayedexpansion
 
@@ -10,7 +11,7 @@ set "PROJECT_ROOT=%PROJECT_ROOT:~0,-1%"
 
 echo.
 echo ========================================
-echo    JunkFilter Startup (Web Mode)
+echo    JunkFilter Startup (Local Dev)
 echo ========================================
 echo.
 
@@ -35,54 +36,86 @@ if errorlevel 1 (
 echo [OK] All prerequisites checked
 echo.
 
-REM Clean up
+REM Clean up old processes
 echo ========== Cleaning Up ==========
 echo.
 
-taskkill /FI "WINDOWTITLE eq JF-Frontend*" >nul 2>&1
+taskkill /FI "WINDOWTITLE eq JF-*" >nul 2>&1
 
 for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":5173 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8080 " ^| findstr "LISTENING"') do (
+    taskkill /F /PID %%p >nul 2>&1
+)
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr ":8083 " ^| findstr "LISTENING"') do (
     taskkill /F /PID %%p >nul 2>&1
 )
 
 timeout /t 2 /nobreak >nul
 
-REM Phase 1: Start all backends in Docker
+REM Phase 1: Start PostgreSQL + Redis in Docker
 echo.
-echo ========== Phase 1: Starting All Backends (Docker) ==========
+echo ========== Phase 1: Starting DB + Redis (Docker) ==========
 echo.
 
-echo [INFO] Building and starting containers...
-docker-compose -f "%PROJECT_ROOT%\docker-compose.yml" up -d
+echo [INFO] Starting PostgreSQL and Redis containers...
+docker-compose -f "%PROJECT_ROOT%\docker-compose.yml" up -d postgres redis
 
 if errorlevel 1 (
     echo [ERROR] Docker startup failed
     exit /b 1
 )
 
-echo [OK] All backend services started in Docker
+echo [OK] PostgreSQL + Redis containers started
 echo.
 
-REM Wait for services to be healthy
-echo [INFO] Waiting for services to be ready...
-timeout /t 8 /nobreak >nul
-
+REM Wait for DB to be healthy
+echo [INFO] Waiting for PostgreSQL to be ready...
+:wait_pg
 docker exec junkfilter-db pg_isready -U junkfilter >nul 2>&1
 if errorlevel 1 (
-    echo [WARN] PostgreSQL may not be ready yet, waiting...
-    timeout /t 5 /nobreak >nul
+    timeout /t 2 /nobreak >nul
+    goto wait_pg
 )
-echo [OK] PostgreSQL ready
-echo [OK] Redis ready
+echo [OK] PostgreSQL ready (Port 5432)
 
-timeout /t 3 /nobreak >nul
-echo [OK] Go backend ready (Port 8080)
-echo [OK] Python API ready (Port 8083)
-echo [OK] Python evaluator ready
+docker exec junkfilter-redis redis-cli ping >nul 2>&1
+echo [OK] Redis ready (Port 6379)
 echo.
 
-REM Phase 2: Start Web Frontend
-echo ========== Phase 2: Starting Web Frontend (Port 5173) ==========
+REM Phase 2: Start Go backend
+echo ========== Phase 2: Starting Go Backend (Port 8080) ==========
+echo.
+
+start "JF-Go" cmd /k "cd /d "%PROJECT_ROOT%\backend-go" && go run main.go"
+echo [OK] Go backend starting...
+echo.
+
+timeout /t 3 /nobreak >nul
+
+REM Phase 3: Start Python API
+echo ========== Phase 3: Starting Python API (Port 8083) ==========
+echo.
+
+start "JF-PyAPI" cmd /k "cd /d "%PROJECT_ROOT%\backend-python" && call %USERPROFILE%\miniconda3\condabin\conda.bat activate junkfilter && python api_server.py"
+echo [OK] Python API starting...
+echo.
+
+timeout /t 3 /nobreak >nul
+
+REM Phase 4: Start Python evaluator
+echo ========== Phase 4: Starting Python Evaluator ==========
+echo.
+
+start "JF-PyEval" cmd /k "cd /d "%PROJECT_ROOT%\backend-python" && call %USERPROFILE%\miniconda3\condabin\conda.bat activate junkfilter && python main.py"
+echo [OK] Python evaluator starting...
+echo.
+
+timeout /t 2 /nobreak >nul
+
+REM Phase 5: Start Web Frontend
+echo ========== Phase 5: Starting Web Frontend (Port 5173) ==========
 echo.
 
 if not exist "%PROJECT_ROOT%\frontend-vue\node_modules" (
@@ -104,15 +137,16 @@ echo ========================================
 echo.
 echo   [Docker]  PostgreSQL      :5432
 echo   [Docker]  Redis           :6379
-echo   [Docker]  Go Backend      :8080
-echo   [Docker]  Python API      :8083
-echo   [Docker]  Python Evaluator (background)
-echo   [Native]  Web Frontend    http://localhost:5173
+echo   [Native]  Go Backend      :8080  (window: JF-Go)
+echo   [Native]  Python API      :8083  (window: JF-PyAPI)
+echo   [Native]  Python Evaluator       (window: JF-PyEval)
+echo   [Native]  Web Frontend    http://localhost:5173  (window: JF-Frontend)
 echo.
 echo   Open browser: http://localhost:5173
 echo.
-echo   To stop backends: docker-compose down
-echo   To view logs:     docker-compose logs -f
+echo   Each service runs in its own cmd window.
+echo   Close a window to stop that service.
+echo   To stop DB/Redis: docker-compose stop postgres redis
 echo.
 
 pause

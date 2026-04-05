@@ -2,13 +2,13 @@
   <!-- 用户消息 -->
   <div v-if="message.role === 'user'" class="flex gap-4 justify-end animate-slide-in">
     <!-- 用户消息气泡 -->
-    <div class="max-w-2xl bg-gray-900 dark:bg-indigo-600 text-white rounded-2xl rounded-tr-sm p-4 shadow-sm">
-      <div class="prose prose-sm prose-invert max-w-none text-white break-words">
-        {{ message.content }}
+    <div class="max-w-2xl bg-gray-900 dark:bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 shadow-sm">
+      <div class="flex items-end gap-3">
+        <div class="break-words text-sm text-white whitespace-pre-wrap">{{ message.content }}</div>
+        <span v-if="message.timestamp" class="text-xs text-gray-300 opacity-70 whitespace-nowrap flex-shrink-0">
+          {{ formatTime(message.timestamp) }}
+        </span>
       </div>
-      <p v-if="message.timestamp" class="text-xs text-gray-300 mt-2 opacity-70">
-        {{ formatTime(message.timestamp) }}
-      </p>
     </div>
 
     <!-- 用户头像 -->

@@ -40,15 +40,18 @@
       </RouterLink>
     </nav>
 
-    <!-- Theme Toggle -->
-    <button
-      @click="themeStore.toggleTheme"
-      class="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#27272a] dark:text-gray-400 transition-colors"
-      :title="`切换到${themeStore.isDark ? '亮色' : '深色'}模式`"
-    >
-      <span v-if="!themeStore.isDark" class="material-icons-outlined">dark_mode</span>
-      <span v-else class="material-icons-outlined">light_mode</span>
-    </button>
+    <!-- Actions -->
+    <div class="flex items-center gap-1">
+      <NotificationBell />
+      <button
+        @click="themeStore.toggleTheme"
+        class="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-[#27272a] dark:text-gray-400 transition-colors"
+        :title="`切换到${themeStore.isDark ? '亮色' : '深色'}模式`"
+      >
+        <span v-if="!themeStore.isDark" class="material-icons-outlined">dark_mode</span>
+        <span v-else class="material-icons-outlined">light_mode</span>
+      </button>
+    </div>
   </header>
 </template>
 
@@ -56,6 +59,7 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useThemeStore } from '@/stores'
+import NotificationBell from './NotificationBell.vue'
 
 const router = useRouter()
 const themeStore = useThemeStore()

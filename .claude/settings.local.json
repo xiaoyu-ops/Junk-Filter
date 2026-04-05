@@ -137,7 +137,25 @@
       "Read(//c/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/**)",
       "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/2022/BuildTools/VC/Auxiliary/Build/**)",
       "Read(//c/Program Files/**)",
-      "Bash(docker:*)"
+      "Bash(docker:*)",
+      "Bash(C:/Users/XIAOYU/miniconda3/python.exe:*)",
+      "Bash(npm list:*)",
+      "Read(//c/Users/XIAOYU/anaconda3/**)",
+      "Read(//c/Users/XIAOYU/miniconda3/**)",
+      "Bash(/c/Users/XIAOYU/miniconda3/python.exe:*)",
+      "WebSearch",
+      "Bash(docker-compose:*)",
+      "Bash(set:*)",
+      "Bash(go vet:*)",
+      "Read(//c/ProgramData/anaconda3/**)",
+      "Bash(ls /c/Python*/python.exe)",
+      "Read(//c/Users/XIAOYU/AppData/Local/Programs/**)",
+      "Bash(go get:*)",
+      "Bash(python -c \":*)",
+      "Bash(pip show:*)",
+      "Bash(conda run -n junkfilter python -c \":*)",
+      "Bash(C:\\\\Users\\\\XIAOYU\\\\miniconda3\\\\envs\\\\junkfilter\\\\python.exe D:\\\\JunkFilter\\\\backend-python\\\\requeue_all.py 2>&1)",
+      "Bash(/c/Users/XIAOYU/miniconda3/envs/junkfilter/python.exe D:/JunkFilter/backend-python/requeue_all.py 2>&1)"
     ]
   }
 }

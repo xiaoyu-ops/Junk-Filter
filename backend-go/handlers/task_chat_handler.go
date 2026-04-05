@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -214,14 +215,56 @@ func (ch *TaskChatHandler) HandleTaskChat(c *gin.Context) {
 		return
 	}
 
-	// Step 4: Stream response from Python directly
-	_, err = io.Copy(w, resp.Body)
-	if err != nil {
+	// Step 4: Stream response from Python, capture AI reply for persistence
+	var aiReplyContent string
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer for large SSE lines
+	for scanner.Scan() {
+		line := scanner.Text()
+		fmt.Fprintf(w, "%s\n", line)
+		flusher.Flush()
+
+		// Parse "data: {...}" lines to capture the completed reply
+		if strings.HasPrefix(line, "data: ") {
+			payload := strings.TrimPrefix(line, "data: ")
+			var event map[string]interface{}
+			if json.Unmarshal([]byte(payload), &event) == nil {
+				if event["status"] == "completed" {
+					if result, ok := event["result"].(map[string]interface{}); ok {
+						if reply, ok := result["reply"].(string); ok {
+							aiReplyContent = reply
+						}
+					}
+				}
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
 		log.Printf("[Task Chat] Error streaming from Python: %v", err)
-		return
 	}
 
-	// Step 5: Send stream end marker
+	// Step 5: Save AI reply to database
+	if aiReplyContent != "" {
+		metaJSON, _ := json.Marshal(map[string]interface{}{"message_type": "ai_reply"})
+		metaStr := string(metaJSON)
+		aiMsg := &models.Message{
+			TaskID:    taskID,
+			ThreadID:  req.ThreadID,
+			Role:      "ai",
+			Type:      "text",
+			Content:   aiReplyContent,
+			CreatedAt: time.Now(),
+			UpdatedAt: time.Now(),
+			Metadata:  &metaStr,
+		}
+		if aiMsgID, err := ch.messageRepo.Create(ctx, aiMsg); err != nil {
+			log.Printf("[Task Chat] Error saving AI reply: %v", err)
+		} else {
+			log.Printf("[Task Chat] AI reply saved: ID=%d", aiMsgID)
+		}
+	}
+
+	// Step 6: Send stream end marker
 	sendSSEEvent(w, flusher, SSEEvent{
 		Status: "stream_end",
 	})

@@ -1,12 +1,8 @@
 """
 Task Analyzer Agent - AI 任务创建助手
 
-使用 LLM 分析用户自然语言需求，从可用的 RSS 源中推荐最合适的源，
-并生成任务标题和优先级建议。
-
-与 ContentEvaluationAgent 采用相同的双引擎模式：
-- 主引擎：真实 LLM API (GPT-4/Claude)
-- 副引擎：规则匹配（当 LLM 不可用时）
+使用 LLM 分析用户自然语言需求，从可用的 RSS 源中推荐最合适的源。
+LLM 不可用时直接抛出异常，不使用规则降级。
 """
 
 import json
@@ -46,25 +42,19 @@ class TaskAnalyzerAgent:
         self.temperature = temperature
         self.max_tokens = max_tokens
 
-        # 初始化 LLM（可选）
-        self.llm = None
-        if api_key:
-            try:
-                llm_kwargs = {
-                    "model": model,
-                    "temperature": temperature,
-                    "api_key": api_key,
-                }
-                if api_base:
-                    llm_kwargs["base_url"] = api_base
+        if not api_key:
+            raise ValueError("[TaskAnalyzerAgent] No API key provided")
 
-                self.llm = ChatOpenAI(**llm_kwargs)
-                logger.info(f"[TaskAnalyzerAgent] LLM initialized: {model}")
-            except Exception as e:
-                logger.warning(f"[TaskAnalyzerAgent] LLM initialization failed: {e}")
-                self.llm = None
-        else:
-            logger.info("[TaskAnalyzerAgent] No API key provided, using rule-based matching")
+        llm_kwargs = {
+            "model": model,
+            "temperature": temperature,
+            "api_key": api_key,
+        }
+        if api_base:
+            llm_kwargs["base_url"] = api_base
+
+        self.llm = ChatOpenAI(**llm_kwargs)
+        logger.info(f"[TaskAnalyzerAgent] LLM initialized: {model}")
 
     async def analyze(
         self,
@@ -84,18 +74,7 @@ class TaskAnalyzerAgent:
             AITaskCreateResponse: 包含 AI 回复、推荐源和任务信息
         """
         logger.info(f"[TaskAnalyzer] Analyzing message: {message[:50]}...")
-
-        # 如果有 LLM，尝试使用真实 AI 分析
-        if self.llm:
-            try:
-                return await self._analyze_with_llm(message, sources, conversation_history)
-            except Exception as e:
-                logger.warning(
-                    f"[TaskAnalyzer] LLM analysis failed: {e}, falling back to rule-based"
-                )
-
-        # 降级到规则匹配
-        return self._analyze_with_rules(message, sources, conversation_history)
+        return await self._analyze_with_llm(message, sources, conversation_history)
 
     async def _analyze_with_llm(
         self,
@@ -177,81 +156,6 @@ class TaskAnalyzerAgent:
         except Exception as e:
             logger.error(f"[TaskAnalyzer] LLM call failed: {e}", exc_info=True)
             raise
-
-    def _analyze_with_rules(
-        self,
-        message: str,
-        sources: List[SourceInfo],
-        conversation_history: Optional[List[ConversationMessage]] = None,
-    ) -> AITaskCreateResponse:
-        """使用规则匹配进行降级分析"""
-        logger.info(f"[TaskAnalyzer] Using rule-based analysis for: {message[:50]}")
-
-        # 关键词匹配
-        message_lower = message.lower()
-        matched_source = None
-        match_score = 0
-
-        for source in sources:
-            if not source.enabled:
-                continue
-
-            # 构建搜索关键词
-            source_name_lower = source.author_name.lower()
-            platform_lower = source.platform.lower()
-            url_keywords = source.url.lower()
-
-            # 计算匹配分数
-            score = 0
-            if source_name_lower in message_lower:
-                score += 10  # 完全匹配源名称
-            elif any(
-                keyword in message_lower for keyword in source_name_lower.split()
-            ):
-                score += 5  # 部分匹配源名称
-
-            if platform_lower in message_lower:
-                score += 5  # 平台匹配
-
-            if score > match_score:
-                match_score = score
-                matched_source = source
-
-        # 如果找到匹配源
-        if matched_source and match_score > 0:
-            task_title = f"监控 {matched_source.author_name}"
-            reply = f"""我理解你的需求了。我发现 "{matched_source.author_name}" 这个源非常适合你！
-
-这个源专注于 {matched_source.platform} 领域，优先级为 {matched_source.priority}/10。
-
-我建议创建以下任务：
-- **任务名称**：{task_title}
-- **优先级**：{matched_source.priority}
-
-这样能够帮助你及时获取最新的相关内容。需要确认创建这个任务吗？"""
-
-            return AITaskCreateResponse(
-                reply=reply,
-                pending_task=PendingTask(
-                    id=f"source-{matched_source.id}",
-                    title=task_title,
-                    source_name=matched_source.author_name,
-                    priority=matched_source.priority,
-                ),
-                source_name=matched_source.author_name,
-            )
-
-        # 如果没有找到匹配
-        reply = """我理解你想要创建一个新的监控任务。不过在我们现有的源中没有完全匹配你的需求。
-
-你可以：
-1. 提供一个 RSS 源的 URL，我可以帮助添加它
-2. 告诉我更多细节，看看现有的源是否能满足需求
-3. 查看所有可用的源，选择一个相近的
-
-你想怎么做呢？"""
-
-        return AITaskCreateResponse(reply=reply)
 
     def _parse_llm_response(
         self, response_text: str, sources: List[SourceInfo]

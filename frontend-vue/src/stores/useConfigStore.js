@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 
 // API 基础 URL
-const API_BASE_URL = 'http://localhost:8080/api'
+const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api`
 
 // 频率转换函数
 const frequencyToSeconds = (frequency) => {
@@ -62,6 +62,12 @@ export const useConfigStore = defineStore('config', () => {
     apiKey: '',
     baseUrl: '',
   })
+
+  // RSS 代理状态
+  const rssProxyUrl = ref('')
+  const isLoadingProxy = ref(false)
+  const isSavingProxy = ref(false)
+  const proxySaveStatus = ref(null) // 'success' | 'error' | null
 
   // 展开行追踪
   const expandedSourceIds = ref([])
@@ -136,8 +142,52 @@ export const useConfigStore = defineStore('config', () => {
       }
     }
 
-    // 同时加载 RSS 源
-    await loadSources()
+    // 同时加载 RSS 源和代理配置
+    await Promise.all([loadSources(), loadRssProxy()])
+  }
+
+  /**
+   * 从 Go 后端加载 RSS 代理配置
+   */
+  const loadRssProxy = async () => {
+    isLoadingProxy.value = true
+    try {
+      const response = await fetch(`${API_BASE_URL}/config/rss-proxy`)
+      if (response.ok) {
+        const data = await response.json()
+        rssProxyUrl.value = data.proxy_url || ''
+      }
+    } catch (error) {
+      console.error('[Config Store] Failed to load RSS proxy:', error)
+    } finally {
+      isLoadingProxy.value = false
+    }
+  }
+
+  /**
+   * 保存 RSS 代理配置到 Go 后端（热更新，无需重启）
+   */
+  const saveRssProxy = async () => {
+    isSavingProxy.value = true
+    proxySaveStatus.value = null
+    try {
+      const response = await fetch(`${API_BASE_URL}/config/rss-proxy`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxy_url: rssProxyUrl.value.trim() }),
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      proxySaveStatus.value = 'success'
+      return true
+    } catch (error) {
+      proxySaveStatus.value = 'error'
+      console.error('[Config Store] Failed to save RSS proxy:', error)
+      return false
+    } finally {
+      isSavingProxy.value = false
+    }
   }
 
   /**
@@ -442,6 +492,12 @@ export const useConfigStore = defineStore('config', () => {
     newModelForm,
     expandedSourceIds,
 
+    // RSS 代理状态
+    rssProxyUrl,
+    isLoadingProxy,
+    isSavingProxy,
+    proxySaveStatus,
+
     // 计算属性
     isConfigValid,
 
@@ -463,6 +519,8 @@ export const useConfigStore = defineStore('config', () => {
     toggleSourceExpanded,
     resetNewRssForm,
     resetNewModelForm,
+    loadRssProxy,
+    saveRssProxy,
     getEvaluationConfig,
     getLLMConfig,
   }

@@ -57,15 +57,16 @@ func (sr *SourceRepository) GetByID(ctx context.Context, id int64) (*models.Sour
 	var lastFetchTime sql.NullTime
 	var authorID sql.NullString
 	var faviconURL sql.NullString
+	var authorFilterJSON sql.NullString
 
 	err := sr.db.QueryRowContext(ctx,
 		`SELECT id, platform, url, author_name, author_id, priority, last_fetch_time,
-		        fetch_interval_seconds, enabled, favicon_url, created_at, updated_at
+		        fetch_interval_seconds, enabled, favicon_url, author_filter, created_at, updated_at
 		 FROM sources WHERE id = $1`,
 		id,
 	).Scan(&source.ID, &source.Platform, &source.URL, &source.AuthorName, &authorID,
 		&source.Priority, &lastFetchTime, &source.FetchIntervalSeconds, &source.Enabled,
-		&faviconURL, &source.CreatedAt, &source.UpdatedAt)
+		&faviconURL, &authorFilterJSON, &source.CreatedAt, &source.UpdatedAt)
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -86,13 +87,17 @@ func (sr *SourceRepository) GetByID(ctx context.Context, id int64) (*models.Sour
 		source.FaviconURL = &faviconURL.String
 	}
 
+	if authorFilterJSON.Valid {
+		source.AuthorFilterJSON = &authorFilterJSON.String
+	}
+
 	return source, nil
 }
 
 // GetAll retrieves all enabled sources
 func (sr *SourceRepository) GetAll(ctx context.Context, enabledOnly bool) ([]*models.Source, error) {
 	query := `SELECT id, platform, url, author_name, author_id, priority, last_fetch_time,
-	                fetch_interval_seconds, enabled, favicon_url, created_at, updated_at
+	                fetch_interval_seconds, enabled, favicon_url, author_filter, created_at, updated_at
 	          FROM sources`
 
 	if enabledOnly {
@@ -113,10 +118,11 @@ func (sr *SourceRepository) GetAll(ctx context.Context, enabledOnly bool) ([]*mo
 		var lastFetchTime sql.NullTime
 		var authorID sql.NullString
 		var faviconURL sql.NullString
+		var authorFilterJSON sql.NullString
 
 		err := rows.Scan(&source.ID, &source.Platform, &source.URL, &source.AuthorName, &authorID,
 			&source.Priority, &lastFetchTime, &source.FetchIntervalSeconds, &source.Enabled,
-			&faviconURL, &source.CreatedAt, &source.UpdatedAt)
+			&faviconURL, &authorFilterJSON, &source.CreatedAt, &source.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
@@ -131,6 +137,10 @@ func (sr *SourceRepository) GetAll(ctx context.Context, enabledOnly bool) ([]*mo
 
 		if faviconURL.Valid {
 			source.FaviconURL = &faviconURL.String
+		}
+
+		if authorFilterJSON.Valid {
+			source.AuthorFilterJSON = &authorFilterJSON.String
 		}
 
 		sources = append(sources, source)
@@ -199,6 +209,37 @@ func (sr *SourceRepository) UpdateLastFetchTime(ctx context.Context, id int64, l
 	return err
 }
 
+// UpdateAuthorFilter updates the author_filter for a source
+func (sr *SourceRepository) UpdateAuthorFilter(ctx context.Context, id int64, filterJSON string) error {
+	_, err := sr.db.ExecContext(ctx,
+		"UPDATE sources SET author_filter = $1, updated_at = $2 WHERE id = $3",
+		filterJSON, time.Now(), id,
+	)
+	return err
+}
+
+// GetDistinctAuthors returns distinct author names from content for a given source
+func (sr *SourceRepository) GetDistinctAuthors(ctx context.Context, sourceID int64) ([]string, error) {
+	rows, err := sr.db.QueryContext(ctx,
+		`SELECT DISTINCT author_name FROM content WHERE source_id = $1 AND author_name != '' ORDER BY author_name`,
+		sourceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var authors []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		authors = append(authors, name)
+	}
+	return authors, rows.Err()
+}
+
 // Search searches for sources by query (author_name or url) and optional platform filter
 func (sr *SourceRepository) Search(ctx context.Context, query, platform string) ([]models.Source, error) {
 	var sources []models.Source
@@ -207,7 +248,7 @@ func (sr *SourceRepository) Search(ctx context.Context, query, platform string) 
 	sqlQuery := `
 		SELECT id, platform, url, author_name, author_id, priority,
 		       fetch_interval_seconds, enabled, last_fetch_time, favicon_url,
-		       created_at, updated_at
+		       author_filter, created_at, updated_at
 		FROM sources
 		WHERE (author_name ILIKE $1 OR url ILIKE $1)
 	`
@@ -232,6 +273,7 @@ func (sr *SourceRepository) Search(ctx context.Context, query, platform string) 
 		var lastFetchTime sql.NullTime
 		var authorID sql.NullString
 		var faviconURL sql.NullString
+		var authorFilterJSON sql.NullString
 
 		err := rows.Scan(
 			&source.ID,
@@ -244,6 +286,7 @@ func (sr *SourceRepository) Search(ctx context.Context, query, platform string) 
 			&source.Enabled,
 			&lastFetchTime,
 			&faviconURL,
+			&authorFilterJSON,
 			&source.CreatedAt,
 			&source.UpdatedAt,
 		)
@@ -259,6 +302,9 @@ func (sr *SourceRepository) Search(ctx context.Context, query, platform string) 
 		}
 		if faviconURL.Valid {
 			source.FaviconURL = &faviconURL.String
+		}
+		if authorFilterJSON.Valid {
+			source.AuthorFilterJSON = &authorFilterJSON.String
 		}
 
 		sources = append(sources, source)

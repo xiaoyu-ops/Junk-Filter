@@ -2,17 +2,21 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Optional
 import redis.asyncio as aioredis
 import asyncpg
-from concurrent.futures import ThreadPoolExecutor
 from models.evaluation import StreamMessage
-from services.evaluator import EvaluatorService
 from services.db_service import DBService
 from agents.content_evaluator import ContentEvaluationAgent
 from config import settings
+from agents.preference_tools import _get_preferences_from_db, format_preferences_for_prompt
+from services.push_service import push_to_channels
 
 logger = logging.getLogger(__name__)
+
+# LLM config cache TTL (seconds)
+_LLM_CONFIG_CACHE_TTL = 60
 
 
 class StreamConsumer:
@@ -38,26 +42,23 @@ class StreamConsumer:
         # Services
         self.db_service = DBService(db_pool)
 
-        # P0: 创建自定义 ThreadPoolExecutor，而不是用默认的 8 个线程
-        self.executor = ThreadPoolExecutor(
-            max_workers=settings.llm_max_workers,
-            thread_name_prefix="llm-worker-"
-        )
-
-        # ContentEvaluationAgent - 从 settings 读取配置
+        # ContentEvaluationAgent - 从 settings 读取配置（启动时初始化，之后热加载）
         model_id = settings.llm_model_id or settings.llm_model
-        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY","")
-        api_base = settings.llm_base_url or os.getenv("LLM_BASE_URL","https://elysiver.h-e.top/v1")
+        api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
+        api_base = settings.llm_base_url or os.getenv("LLM_BASE_URL", "")
         logger.info(f"Initializing ContentEvaluationAgent with model:{model_id} (Consumer: {self.consumer_name})")
 
         self.evaluator_agent = ContentEvaluationAgent(
             model=model_id,
             api_key=api_key,
             api_base=api_base,
+            max_tokens=settings.llm_max_tokens,
         )
+        self._base_system_prompt = self.evaluator_agent.system_prompt
 
-        # Legacy evaluator service 保留（用于备份）
-        self.legacy_evaluator = EvaluatorService(None, self.db_service)
+        # LLM config hot-reload cache
+        self._llm_config_last_check = 0
+
 
     async def initialize(self):
         """Initialize consumer group"""
@@ -143,6 +144,9 @@ class StreamConsumer:
                             )
 
                     if batch:
+                        # Process pending retries before new messages
+                        await self._requeue_pending_content()
+
                         # Evaluate batch using ContentEvaluationAgent
                         success, failure = await self.evaluate_batch(batch)
 
@@ -184,7 +188,15 @@ class StreamConsumer:
 
         for message in messages:
             try:
-                # Rate limit: pause between LLM calls to avoid API throttling
+                # Defensive check: skip stale messages whose content_id no longer exists in DB
+                exists = await self.db_pool.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM content WHERE id = $1)", message.content_id
+                )
+                if not exists:
+                    logger.warning(f"Skipping content {message.content_id}: not found in database (stale message)")
+                    continue
+
+                # Rate limit: pause between LLM calls (serial)
                 if success_count + failure_count > 0:
                     await asyncio.sleep(settings.llm_request_interval)
 
@@ -192,6 +204,8 @@ class StreamConsumer:
                 result = await self._evaluate_with_agent(message)
 
                 if result is None:
+                    # LLM failed - increment eval_attempts, decide PENDING or DISCARDED
+                    await self._handle_eval_failure(message)
                     failure_count += 1
                     continue
 
@@ -228,6 +242,11 @@ class StreamConsumer:
                     f"Depth={result.depth_score}, "
                     f"Decision={result.decision}"
                 )
+
+                # Check if content meets notification threshold (user-configurable)
+                if await self._should_notify(message, result):
+                    await self._create_notification(message, result)
+
                 success_count += 1
 
             except Exception as e:
@@ -253,40 +272,45 @@ class StreamConsumer:
 
     async def _reload_llm_config(self):
         """
-        ✨ 重新加载数据库中的 LLM 配置（支持动态更新）
+        Hot-reload LLM config from database with TTL cache.
 
-        流程：
-        1. 查询 model_config 表，获取最新启用的配置
-        2. 如果找到配置且 API Key 有效，更新 evaluator_agent
-        3. 如果没有配置，保持现有设置（回退到启动时的配置）
+        - Checks DB at most once per _LLM_CONFIG_CACHE_TTL seconds
+        - Only recreates evaluator_agent when model/api_key/base_url actually changed
         """
+        now = time.time()
+        if now - self._llm_config_last_check < _LLM_CONFIG_CACHE_TTL:
+            return  # cache still fresh, skip DB query
+
+        self._llm_config_last_check = now
+
         try:
             from config import load_llm_config_from_db
 
             db_config = await load_llm_config_from_db(self.db_pool)
 
             if db_config and db_config.get('api_key'):
-                # 配置有效，重新创建 evaluator_agent
                 new_model = db_config.get('model_name', self.evaluator_agent.model)
                 new_api_key = db_config['api_key']
-                new_api_base = db_config.get('base_url') or os.getenv("LLM_BASE_URL", "https://elysiver.h-e.top/v1")
+                new_api_base = db_config.get('base_url') or os.getenv("LLM_BASE_URL", "")
 
-                # 只在配置变化时重新初始化（避免频繁重建）
+                # Only reinitialize when config actually changed
                 if (new_model != self.evaluator_agent.model or
-                    new_api_key != getattr(self.evaluator_agent, 'api_key', '')):
+                    new_api_key != getattr(self.evaluator_agent, 'api_key', '') or
+                    new_api_base != getattr(self.evaluator_agent, 'api_base', '')):
 
                     self.evaluator_agent = ContentEvaluationAgent(
                         model=new_model,
                         api_key=new_api_key,
                         api_base=new_api_base,
+                        max_tokens=settings.llm_max_tokens,
                     )
-                    logger.info(f"[Config] Reloaded LLM config from database: {new_model}")
+                    self._base_system_prompt = self.evaluator_agent.system_prompt
+                    logger.info(f"[Config] Hot-reloaded LLM config: model={new_model}, base_url={new_api_base}")
             else:
-                logger.debug("[Config] No enabled LLM config in database, using current settings")
+                logger.debug("[Config] No valid LLM config in database, keeping current settings")
 
         except Exception as e:
             logger.warning(f"[Config] Error reloading LLM config: {e}")
-            # 配置重载失败，继续使用现有配置（不中断评估）
 
     async def _evaluate_with_agent(self, message: StreamMessage):
         """
@@ -305,11 +329,10 @@ class StreamConsumer:
                 "PROCESSING",
             )
 
-            # P0: 使用自定义 ThreadPoolExecutor（50 个线程）而不是默认的 8 个
-            # 这样可以支持 25 items/sec，而不是 4 items/sec
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(
-                self.executor,  # ← P0: 自定义线程池，不用 None (默认)
+            # Load user preferences and inject into evaluator prompt
+            await self._inject_preferences(message)
+
+            result = await asyncio.to_thread(
                 self.evaluator_agent.run,
                 message.title,
                 message.content,
@@ -321,6 +344,167 @@ class StreamConsumer:
         except Exception as e:
             logger.error(f"Error in agent evaluation: {e}")
             return None
+
+    async def _handle_eval_failure(self, message: StreamMessage):
+        """LLM 评估失败时：递增 eval_attempts，超过阈值则标记 DISCARDED"""
+        try:
+            row = await self.db_pool.fetchrow(
+                "UPDATE content SET eval_attempts = eval_attempts + 1 WHERE id = $1 RETURNING eval_attempts",
+                message.content_id
+            )
+            attempts = row["eval_attempts"] if row else 1
+            if attempts >= settings.llm_max_eval_attempts:
+                await self.db_service.update_content_status(message.content_id, "DISCARDED")
+                await self.db_service.log_status_change(
+                    content_id=message.content_id,
+                    task_id=message.task_id,
+                    from_status="PENDING",
+                    to_status="DISCARDED",
+                    reason=f"LLM evaluation failed after {attempts} attempts",
+                )
+                logger.warning(f"[Eval] Content {message.content_id} DISCARDED after {attempts} failed attempts")
+            else:
+                logger.info(f"[Eval] Content {message.content_id} kept PENDING (attempt {attempts}/{settings.llm_max_eval_attempts})")
+        except Exception as e:
+            logger.error(f"[Eval] Error handling eval failure for {message.content_id}: {e}")
+
+    async def _requeue_pending_content(self):
+        """将之前 LLM 失败但未超限的 PENDING 内容重新推入 stream"""
+        try:
+            rows = await self.db_pool.fetch(
+                """SELECT id, task_id, title, original_url, clean_content, published_at, platform, author_name, content_hash
+                   FROM content
+                   WHERE status = 'PENDING' AND eval_attempts > 0 AND eval_attempts < $1
+                   ORDER BY created_at ASC LIMIT $2""",
+                settings.llm_max_eval_attempts,
+                self.batch_size,
+            )
+            for row in rows:
+                msg_data = json.dumps({
+                    "content_id": row["id"],
+                    "task_id": str(row["task_id"]),
+                    "title": row["title"] or "",
+                    "url": row["original_url"] or "",
+                    "content": row["clean_content"] or "",
+                    "published_at": row["published_at"].isoformat() if row["published_at"] else "",
+                    "platform": row["platform"] or "blog",
+                    "author_name": row["author_name"] or "",
+                    "content_hash": row["content_hash"] or "",
+                }, ensure_ascii=False)
+                await self.redis.xadd(self.stream_name, {"data": msg_data})
+            if rows:
+                logger.info(f"[Requeue] Re-queued {len(rows)} PENDING content items for retry")
+        except Exception as e:
+            logger.error(f"[Requeue] Error re-queuing pending content: {e}")
+
+    async def _should_notify(self, message: StreamMessage, result) -> bool:
+        """Check notification settings from DB to decide whether to notify"""
+        try:
+            row = await self.db_pool.fetchrow(
+                "SELECT min_innovation_score, min_depth_score, notify_on_interesting, watched_source_ids, enabled FROM notification_settings WHERE id = 1"
+            )
+            if not row:
+                # Default behavior if no settings
+                return result.decision == "INTERESTING" or (result.innovation_score >= 8 and result.depth_score >= 7)
+
+            if not row["enabled"]:
+                return False
+
+            # Check watched sources filter
+            watched = row["watched_source_ids"]
+            if watched and isinstance(watched, list) and len(watched) > 0:
+                # Get source_id for this content
+                content_row = await self.db_pool.fetchrow(
+                    "SELECT source_id FROM content WHERE id = $1", message.content_id
+                )
+                if content_row and content_row["source_id"] not in watched:
+                    return False
+
+            # Check decision-based rule
+            if row["notify_on_interesting"] and result.decision == "INTERESTING":
+                return True
+
+            # Check score thresholds
+            min_innovation = row["min_innovation_score"]
+            min_depth = row["min_depth_score"]
+            if result.innovation_score >= min_innovation and result.depth_score >= min_depth:
+                return True
+
+            return False
+        except Exception as e:
+            logger.debug(f"[Notification] Could not read settings: {e}")
+            # Fallback to default
+            return result.decision == "INTERESTING" or (result.innovation_score >= 8 and result.depth_score >= 7)
+
+    async def _create_notification(self, message: StreamMessage, result):
+        """Create a notification for high-value evaluated content"""
+        try:
+            await self.db_pool.execute(
+                """INSERT INTO notifications (content_id, title, summary, innovation_score, depth_score, decision)
+                   VALUES ($1, $2, $3, $4, $5, $6)""",
+                message.content_id,
+                message.title,
+                result.tldr,
+                result.innovation_score,
+                result.depth_score,
+                result.decision,
+            )
+            # Publish notification event via Redis Pub/Sub
+            notification_data = json.dumps({
+                "content_id": message.content_id,
+                "title": message.title,
+                "summary": result.tldr,
+                "innovation_score": result.innovation_score,
+                "depth_score": result.depth_score,
+                "decision": result.decision,
+            }, ensure_ascii=False)
+            await self.redis.publish("notifications", notification_data)
+            logger.info(f"[Notification] Created for content {message.content_id}: {message.title[:50]}")
+
+            # Push to external channels (PushPlus, WxPusher, etc.)
+            await push_to_channels(
+                self.db_pool,
+                title=message.title,
+                summary=result.tldr,
+                innovation_score=result.innovation_score,
+                depth_score=result.depth_score,
+                decision=result.decision,
+                url=getattr(message, 'url', ''),
+            )
+        except Exception as e:
+            logger.warning(f"[Notification] Failed to create: {e}")
+
+    async def _inject_preferences(self, message: StreamMessage):
+        """Load user preferences for the source and inject into evaluator prompt"""
+        try:
+            # Get source_id from content table
+            source_id = None
+            if hasattr(message, 'content_id') and message.content_id:
+                row = await self.db_pool.fetchrow(
+                    "SELECT source_id FROM content WHERE id = $1",
+                    message.content_id,
+                )
+                if row:
+                    source_id = row["source_id"]
+
+            # Load preferences (source-specific first, then global fallback)
+            prefs = {}
+            if source_id:
+                prefs = await _get_preferences_from_db(source_id)
+            if not prefs:
+                prefs = await _get_preferences_from_db(None)  # global
+
+            # Inject into evaluator's system_prompt
+            pref_text = format_preferences_for_prompt(prefs)
+            if pref_text:
+                base_prompt = self._base_system_prompt
+                self.evaluator_agent.system_prompt = base_prompt + pref_text
+            else:
+                # No preferences — restore base prompt
+                self.evaluator_agent.system_prompt = self._base_system_prompt
+
+        except Exception as e:
+            logger.debug(f"[Preferences] Could not inject preferences: {e}")
 
     async def get_pending_count(self) -> int:
         """Get count of pending messages"""

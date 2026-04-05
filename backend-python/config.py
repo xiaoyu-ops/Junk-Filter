@@ -52,11 +52,12 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     redis_pool_size: int = 10
 
-    # 评估配置 (P0 优化)
+    # 评估配置
     evaluation_timeout: int = 30
     max_retries: int = 3
-    batch_size: int = 50  # ← P0: 从 10 改为 50 (批量处理)
-    llm_max_workers: int = 50  # ← P0: 新增，ThreadPoolExecutor 线程数
+    batch_size: int = 10
+    llm_max_workers: int = 1  # 串行，不并发
+    llm_max_eval_attempts: int = 3  # 每篇文章最多尝试 LLM 评估次数，超限标记 DISCARDED
 
     # LLM 配置 (OpenAI)
     llm_provider: str = "openai"
@@ -67,7 +68,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2000
     llm_timeout: int = 60
-    llm_request_interval: float = 5.0  # seconds between LLM API calls to avoid rate limiting
+    llm_request_interval: float = 2.0  # seconds between LLM API calls (serial)
 
     # FastAPI 服务配置
     api_host: str = "0.0.0.0"
@@ -151,7 +152,7 @@ async def initialize_llm_config(pool: asyncpg.pool.Pool):
         # 使用环境变量
         logger.info("[Config] Using LLM config from environment variables")
         if not settings.openai_api_key:
-            logger.warning("[Config] No API key configured - will use rule-based evaluator")
+            logger.warning("[Config] No API key configured")
 
 
 

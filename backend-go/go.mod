@@ -1,6 +1,6 @@
 module github.com/junkfilter/backend-go
 
-go 1.21
+go 1.23
 
 replace (
 	github.com/junkfilter/backend-go/handlers => ./handlers
@@ -13,6 +13,7 @@ replace (
 )
 
 require (
+	github.com/JohannesKaufmann/html-to-markdown v1.6.0
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/google/uuid v1.5.0
@@ -23,8 +24,8 @@ require (
 )
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.0 // indirect
-	github.com/andybalholm/cascadia v1.3.1 // indirect
+	github.com/PuerkitoBio/goquery v1.9.2 // indirect
+	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/bytedance/sonic v1.11.6 // indirect
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
@@ -48,9 +49,9 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/crypto v0.23.0 // indirect
-	golang.org/x/net v0.25.0 // indirect
-	golang.org/x/sys v0.20.0 // indirect
-	golang.org/x/text v0.15.0 // indirect
+	golang.org/x/crypto v0.33.0 // indirect
+	golang.org/x/net v0.35.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	google.golang.org/protobuf v1.34.1 // indirect
 )

@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import Optional
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
@@ -20,6 +21,7 @@ from config import settings
 from main import Database, Redis
 from agents.content_evaluator import ContentEvaluationAgent
 from agents.task_analyzer import TaskAnalyzerAgent
+from agents.preference_tools import set_db_pool as set_preference_db_pool, _merge_and_save as merge_preferences
 from models.ai_task import AITaskCreateRequest, AITaskCreateResponse
 
 # LLM Integration
@@ -99,6 +101,11 @@ async def lifespan(app: FastAPI):
     try:
         await Database.initialize()
         await Redis.initialize()
+        # Wire up preference tools with DB pool
+        if Database.get_pool():
+            set_preference_db_pool(Database.get_pool())
+        # Hot-load LLM config from DB on startup
+        await _get_hot_evaluator()
         logger.info("✓ Python API Server initialized")
     except Exception as e:
         logger.error(f"✗ Initialization failed: {e}")
@@ -152,32 +159,72 @@ app.add_middleware(
 
 logger.info(f"✓ CORS 配置: origins={cors_origins}, credentials={cors_allow_credentials}")
 
-# 初始化评估 Agent
-model_id = os.getenv("LLM_MODEL_ID") or os.getenv("llm_model_id") or settings.llm_model_id or settings.llm_model or "gpt-4o"
-api_key = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
-api_base = os.getenv("LLM_BASE_URL") or os.getenv("llm_base_url") or settings.llm_base_url or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
+# 初始化评估 Agent（启动时使用环境变量，后续从 DB 热加载）
+_init_model_id = os.getenv("LLM_MODEL_ID") or os.getenv("llm_model_id") or settings.llm_model_id or settings.llm_model or "gpt-4o"
+_init_api_key = os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
+_init_api_base = os.getenv("LLM_BASE_URL") or os.getenv("llm_base_url") or settings.llm_base_url or os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")
 
-# P1-7: 脱敏日志 - 仅记录主机名，不记录完整 URL
-try:
-    parsed_url = urlparse(api_base)
-    api_base_hostname = parsed_url.hostname or api_base
-except Exception:
-    api_base_hostname = api_base
-
-logger.info(f"✓ LLM Configuration: Model={model_id}, Base={api_base_hostname}")
+logger.info(f"✓ LLM Configuration (initial): Model={_init_model_id}")
 
 evaluator = ContentEvaluationAgent(
-    model=model_id,
-    api_key=api_key,
-    api_base=api_base
+    model=_init_model_id,
+    api_key=_init_api_key,
+    api_base=_init_api_base
 )
 
-# 初始化任务分析器
 task_analyzer = TaskAnalyzerAgent(
-    model=model_id,
-    api_key=api_key,
-    api_base=api_base
+    model=_init_model_id,
+    api_key=_init_api_key,
+    api_base=_init_api_base
 )
+
+# Hot-reload cache for api_server global agents
+_api_llm_config_cache = {"last_check": 0, "model": _init_model_id, "api_key": _init_api_key, "base_url": _init_api_base}
+_API_LLM_CONFIG_TTL = 60  # seconds
+
+
+async def _get_hot_evaluator() -> ContentEvaluationAgent:
+    """Get evaluator with hot-reloaded LLM config from DB (cached 60s)."""
+    global evaluator, task_analyzer, _api_llm_config_cache
+
+    now = time.time()
+    if now - _api_llm_config_cache["last_check"] < _API_LLM_CONFIG_TTL:
+        return evaluator
+
+    _api_llm_config_cache["last_check"] = now
+
+    try:
+        pool = Database.get_pool()
+        if not pool:
+            return evaluator
+
+        from config import load_llm_config_from_db
+        db_config = await load_llm_config_from_db(pool)
+
+        if db_config and db_config.get('api_key'):
+            new_model = db_config.get('model_name', evaluator.model)
+            new_key = db_config['api_key']
+            new_base = db_config.get('base_url') or os.getenv("LLM_BASE_URL", "")
+
+            changed = (
+                new_model != _api_llm_config_cache["model"] or
+                new_key != _api_llm_config_cache["api_key"] or
+                new_base != _api_llm_config_cache["base_url"]
+            )
+
+            if changed:
+                evaluator = ContentEvaluationAgent(
+                    model=new_model, api_key=new_key, api_base=new_base
+                )
+                task_analyzer = TaskAnalyzerAgent(
+                    model=new_model, api_key=new_key, api_base=new_base
+                )
+                _api_llm_config_cache.update(model=new_model, api_key=new_key, base_url=new_base)
+                logger.info(f"[Config] Hot-reloaded API server LLM config: model={new_model}")
+    except Exception as e:
+        logger.warning(f"[Config] Error hot-reloading API server LLM config: {e}")
+
+    return evaluator
 
 
 # ======================== 健康检查 ========================
@@ -187,7 +234,7 @@ async def health_check():
     """健康检查端点"""
     db_status = "connected" if Database.get_pool() else "disconnected"
     redis_status = "connected" if Redis.get_client() else "disconnected"
-    llm_status = "configured" if api_key else "unconfigured"
+    llm_status = "configured" if _api_llm_config_cache.get("api_key") else "unconfigured"
 
     return HealthResponse(
         status="healthy",
@@ -216,8 +263,9 @@ async def evaluate(request: EvaluationRequest):
     try:
         logger.info(f"Evaluating content: {request.title[:50]}")
 
-        # 调用评估 Agent
-        result = await evaluator.evaluate(
+        # 调用评估 Agent (hot-reload config from DB)
+        current_evaluator = await _get_hot_evaluator()
+        result = await current_evaluator.evaluate(
             title=request.title,
             content=request.content,
             url="",
@@ -260,8 +308,9 @@ async def evaluate_stream(request: EvaluationRequest):
             # 发送评估中事件
             yield "data: " + json.dumps({"status": "processing", "phase": "evaluating"}) + "\n\n"
 
-            # 调用评估 Agent
-            result = await evaluator.evaluate(
+            # 调用评估 Agent (hot-reload config from DB)
+            current_evaluator = await _get_hot_evaluator()
+            result = await current_evaluator.evaluate(
                 title=request.title,
                 content=request.content,
                 url="",
@@ -364,36 +413,24 @@ async def task_chat(task_id: int, request: TaskChatRequest):
                 cards_str = "（暂无评估卡片）"
 
             # 构建系统提示词
-            system_prompt = f"""你是 Junk Filter 的 Agent 调优助手。你的角色是帮助用户理解和优化 RSS 内容评估的 Agent。
+            system_prompt = f"""你是 Junk Filter 的智能助手，运行在 {request.llm_config.get('model_name', '未知模型') if request.llm_config else '未知模型'} 上。
 
-【当前任务】
-名称: {task_meta.get('name', 'Unknown')}
-描述: {request.agent_context.get('task_description', 'N/A')}
-优先级: {task_meta.get('priority', 'N/A')}
+你的职责是帮助用户理解 RSS 内容评估结果、解读内容趋势、调整阅读偏好。充分发挥你的理解和分析能力，为用户提供有价值的洞察。
 
-【当前配置】
-- Temperature: {current_config.get('temperature', 0.7)}
-- Top P: {current_config.get('topP', 0.9)}
-- Max Tokens: {current_config.get('maxTokens', 2000)}
-- 过滤规则: {current_config.get('filter_rules', 'default')}
+【当前任务上下文】
+任务名称: {task_meta.get('name', 'Unknown')}
+任务描述: {request.agent_context.get('task_description', 'N/A')}
 
-【最近对话】
-{chat_history_str if chat_history_str else '（无历史对话）'}
-
-【最近的评估卡片详情】共 {len(recent_cards)} 张
+【已评估内容（共 {len(recent_cards)} 篇）】
 {cards_str}
 
-你可以帮助用户：
-1. 查询任务状态："现在的执行进度如何？" → 根据上面的卡片数据，提供实际的处理数量、决策分布、评分情况
-2. 调整过滤规则："接下来多关注深度学习的论文" → 建议如何修改 filter_rules
-3. 解释评估决策："为什么这张卡片被标记为 SKIP？" → 根据上面的卡片数据中的摘要和评分来解释
-4. 性能建议："如何改进评估的准确性？" → 建议调整参数或规则
+【对话历史】
+{chat_history_str if chat_history_str else '（新对话）'}
 
-回复时：
-- 使用自然流畅的中文
-- 直接回答用户的问题，引用具体的卡片数据
-- 如果涉及参数修改，在回复中清楚地说明"建议: 将 temperature 改为 X"
-- 如果需要引用卡片，请说"参考卡片 #123"格式"""
+【注意事项】
+- 涉及具体数据时（卡片编号、评分、统计）只引用上方提供的真实数据，没有数据时直接说明
+- 如检测到用户的内容偏好信号，在回复末尾附加（用户不可见）：<!--PREF_UPDATE:{{"liked_topics":["示例"]}}-->
+- 用自然流畅的中文回复"""
 
             # 发送分析中事件
             yield "data: " + json.dumps({"status": "processing", "phase": "generating"}) + "\n\n"
@@ -410,6 +447,15 @@ async def task_chat(task_id: int, request: TaskChatRequest):
                 llm_config=request.llm_config,      # ← 传递用户提供的 LLM 配置
                 eval_config=request.eval_config     # ← 传递用户提供的评估配置
             )
+
+            # ==================== 解析偏好更新 ====================
+            reply, pref_updates = extract_preference_updates(reply)
+            if pref_updates:
+                try:
+                    await merge_preferences(pref_updates, source_id=None)
+                    logger.info(f"[Task Chat] Preference updated: {pref_updates}")
+                except Exception as pref_e:
+                    logger.warning(f"[Task Chat] Preference update failed: {pref_e}")
 
             # ==================== 解析回复中的参数更新 ====================
             parameter_updates = extract_parameter_updates(reply)
@@ -473,15 +519,10 @@ async def generate_task_chat_reply(user_message: str, system_prompt: str, task_m
 
     logger.info(f"[LLM] has_llm_config={has_llm_config}, has_env_key={has_env_key}")
 
-    if has_llm_config or has_env_key:
-        try:
-            logger.info(f"[LLM] Calling _call_llm with llm_config={llm_config}")
-            return await _call_llm(user_message, system_prompt, llm_config, eval_config)
-        except Exception as e:
-            logger.warning(f"LLM call failed, falling back to rule-based responses: {e}")
+    if not has_llm_config and not has_env_key:
+        raise RuntimeError("未配置 API Key，请在设置页面填写 LLM 配置")
 
-    # 回退到规则匹配
-    return _fallback_rule_based_reply(user_message, task_metadata)
+    return await _call_llm(user_message, system_prompt, llm_config, eval_config)
 
 
 async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = None, eval_config: dict = None) -> str:
@@ -593,45 +634,22 @@ async def _call_llm(user_message: str, system_prompt: str, llm_config: dict = No
         raise
 
 
-def _fallback_rule_based_reply(user_message: str, task_metadata: dict) -> str:
-    """规则匹配的回退实现"""
-    lower_msg = user_message.lower()
+def extract_preference_updates(reply: str) -> tuple:
+    """从 AI 回复中提取偏好更新标记，并将标记从回复中移除
 
-    if any(keyword in lower_msg for keyword in ["进度", "多少", "处理", "状态"]):
-        return f"""当前任务 {task_metadata.get('name', 'Unknown')} 的统计信息：
-
-✅ 已处理消息: 127 条
-⭐ 高价值内容: 12 条 (9.4%)
-📌 已书签: 38 条 (29.9%)
-⏭️ 跳过: 77 条 (60.6%)
-
-最近 1 小时内，系统识别出 3 条创新度和深度都达到 8 分以上的高质量内容。
-
-建议: 你可以查看时间轴上的高评分卡片，了解最近的热点话题。"""
-
-    elif any(keyword in lower_msg for keyword in ["调整", "修改", "规则", "过滤"]):
-        return f"""好的，我理解你想调整评估规则。
-
-当前的过滤规则是: `default`
-
-我可以帮助你修改以下参数：
-- **过滤关键词**: 比如添加 "深度学习" 来专注 AI 话题
-- **评估敏感度**: 调整 temperature (0.0-1.0)，数值越高越"有创意"
-- **内容长度偏好**: 通过 max_tokens 调整
-
-建议: 告诉我你想关注的具体话题，我会给出参数建议。"""
-
-    else:
-        return f"""我已收到你的问题："{user_message}"
-
-关于任务 {task_metadata.get('name', 'Unknown')}，我可以帮助你：
-
-1. **查询进度**: 问我"现在的执行进度如何？"获取最新统计
-2. **调整规则**: 告诉我你想关注什么内容类型
-3. **解释决策**: 问我"为什么某张卡片被标记为 SKIP？"
-4. **优化建议**: 问我"如何改进评估准确性？"
-
-请告诉我你需要什么帮助。"""
+    Returns:
+        tuple: (cleaned_reply, preference_dict or None)
+    """
+    import re
+    match = re.search(r'<!--PREF_UPDATE:(.*?)-->', reply)
+    if match:
+        try:
+            pref_data = json.loads(match.group(1))
+            cleaned = reply[:match.start()].rstrip()
+            return cleaned, pref_data
+        except json.JSONDecodeError:
+            pass
+    return reply, None
 
 
 def extract_parameter_updates(reply: str) -> dict:
@@ -708,7 +726,8 @@ async def create_task_with_ai(request: AITaskCreateRequest):
     try:
         logger.info(f"[AI Task Create] Analyzing: {request.message[:50]}...")
 
-        # 根据请求中的 LLM 配置创建新的分析器（或使用全局的）
+        # 根据请求中的 LLM 配置创建新的分析器（或使用热加载后的全局分析器）
+        await _get_hot_evaluator()  # trigger hot-reload for task_analyzer too
         analyzer = task_analyzer
 
         # 如果请求中提供了有效的 LLM 配置，就创建一个新的分析器实例
@@ -760,6 +779,60 @@ async def create_task_with_ai(request: AITaskCreateRequest):
             status_code=500,
             detail=f"Failed to analyze task: {str(e)}"
         )
+
+
+# ======================== 推送测试 ========================
+
+class TestPushRequest(BaseModel):
+    """测试推送请求"""
+    channel: dict  # {"type": "pushplus", "token": "xxx", "enabled": true}
+
+@app.post("/api/notifications/test-push")
+async def test_push(request: TestPushRequest):
+    """测试推送渠道是否配置正确"""
+    from services.push_service import test_push_channel
+    result = await test_push_channel(request.channel)
+    if result["success"]:
+        return result
+    else:
+        raise HTTPException(status_code=400, detail=result["message"])
+
+
+# ======================== 管理接口 ========================
+
+@app.post("/api/admin/requeue-all")
+async def requeue_all_pending():
+    """将所有 PENDING 状态的内容重新推入 Redis Stream 进行 LLM 评估"""
+    db = Database.get_pool()
+    redis = Redis.get_client()
+    if not db or not redis:
+        raise HTTPException(status_code=503, detail="DB or Redis not available")
+
+    rows = await db.fetch(
+        """SELECT id, task_id, title, original_url, clean_content,
+                  published_at, platform, author_name, content_hash
+           FROM content WHERE status = 'PENDING'
+           ORDER BY created_at ASC"""
+    )
+
+    queued = 0
+    for row in rows:
+        msg_data = json.dumps({
+            "content_id": row["id"],
+            "task_id": str(row["task_id"]),
+            "title": row["title"] or "",
+            "url": row["original_url"] or "",
+            "content": row["clean_content"] or "",
+            "published_at": row["published_at"].isoformat() if row["published_at"] else "",
+            "platform": row["platform"] or "blog",
+            "author_name": row["author_name"] or "",
+            "content_hash": row["content_hash"] or "",
+        }, ensure_ascii=False)
+        await redis.xadd("ingestion_queue", {"data": msg_data})
+        queued += 1
+
+    logger.info(f"[Admin] Re-queued {queued} PENDING items for LLM evaluation")
+    return {"queued": queued, "message": f"已将 {queued} 篇文章重新加入评估队列"}
 
 
 # ======================== 根路径 ========================

@@ -5,10 +5,16 @@
       <section>
         <div class="flex items-center justify-between mb-6">
           <h2 class="text-2xl font-bold text-[#111827] dark:text-white">订阅源管理 (RSS)</h2>
-          <button @click="configStore.toggleRssModal" class="btn-primary">
-            <span class="material-icons-outlined text-sm">add</span>
-            <span>添加订阅源</span>
-          </button>
+          <div class="flex items-center gap-2">
+            <button @click="showPresetModal = true" class="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <span class="material-icons-outlined text-sm">auto_awesome</span>
+              <span>推荐源</span>
+            </button>
+            <button @click="configStore.toggleRssModal" class="btn-primary">
+              <span class="material-icons-outlined text-sm">add</span>
+              <span>添加订阅源</span>
+            </button>
+          </div>
         </div>
 
         <div class="bg-white dark:bg-[#1F2937] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -125,6 +131,48 @@
             actionIcon="add_circle"
             @action="configStore.toggleRssModal"
           />
+        </div>
+      </section>
+
+      <!-- RSS 代理配置 -->
+      <section>
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-2xl font-bold text-[#111827] dark:text-white">RSS 代理设置</h2>
+        </div>
+
+        <div class="bg-white dark:bg-[#1F2937] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+          <p class="text-sm text-[#6B7280] mb-4">
+            用于抓取无法直接访问的 RSS 源（如 feedburner.com），支持 HTTP/HTTPS/SOCKS5 代理。修改后即时生效，无需重启服务。
+          </p>
+          <div class="flex items-end gap-4">
+            <div class="flex-1">
+              <label class="block text-sm font-medium text-[#374151] dark:text-gray-300 mb-1.5">代理地址</label>
+              <input
+                v-model="configStore.rssProxyUrl"
+                type="text"
+                placeholder="例如: http://127.0.0.1:7890 或 socks5://127.0.0.1:1080"
+                class="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-[#111827] dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              />
+            </div>
+            <button
+              @click="handleSaveProxy"
+              :disabled="configStore.isSavingProxy"
+              class="btn-primary whitespace-nowrap"
+            >
+              <span v-if="configStore.isSavingProxy" class="material-icons-outlined text-sm animate-spin">sync</span>
+              <span v-else class="material-icons-outlined text-sm">save</span>
+              <span>{{ configStore.isSavingProxy ? '保存中...' : '保存' }}</span>
+            </button>
+          </div>
+          <!-- 保存状态提示 -->
+          <div v-if="configStore.proxySaveStatus === 'success'" class="mt-3 flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+            <span class="material-icons-outlined text-sm">check_circle</span>
+            <span>代理配置已更新，即时生效</span>
+          </div>
+          <div v-else-if="configStore.proxySaveStatus === 'error'" class="mt-3 flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+            <span class="material-icons-outlined text-sm">error</span>
+            <span>保存失败，请检查后端是否运行</span>
+          </div>
         </div>
       </section>
 
@@ -270,7 +318,331 @@
           </div>
         </div>
       </section>
+
+      <!-- 通知设置 -->
+      <section>
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-2xl font-bold text-[#111827] dark:text-white">通知设置</h2>
+        </div>
+
+        <div class="bg-white dark:bg-[#1F2937] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+          <!-- 加载状态 -->
+          <div v-if="notifLoading" class="flex items-center gap-2 text-gray-500">
+            <span class="material-icons-outlined animate-spin text-sm">sync</span>
+            <span class="text-sm">加载中...</span>
+          </div>
+
+          <div v-else class="space-y-6">
+            <!-- 总开关 -->
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="text-sm font-medium text-[#111827] dark:text-white">启用通知</h3>
+                <p class="text-xs text-[#6B7280] mt-0.5">当高价值内容被评估完成时推送通知</p>
+              </div>
+              <button
+                @click="notifSettings.enabled = !notifSettings.enabled"
+                :class="[
+                  'relative w-11 h-6 rounded-full transition-colors',
+                  notifSettings.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                    notifSettings.enabled ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </div>
+
+            <div v-if="notifSettings.enabled" class="space-y-6">
+              <!-- INTERESTING 决策通知 -->
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-medium text-[#111827] dark:text-white">INTERESTING 决策自动通知</h3>
+                  <p class="text-xs text-[#6B7280] mt-0.5">无论分数高低，只要决策为 INTERESTING 就发送通知</p>
+                </div>
+                <button
+                  @click="notifSettings.notify_on_interesting = !notifSettings.notify_on_interesting"
+                  :class="[
+                    'relative w-11 h-6 rounded-full transition-colors',
+                    notifSettings.notify_on_interesting ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                  ]"
+                >
+                  <span
+                    :class="[
+                      'absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform',
+                      notifSettings.notify_on_interesting ? 'translate-x-5' : 'translate-x-0'
+                    ]"
+                  />
+                </button>
+              </div>
+
+              <!-- 分数阈值 -->
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label class="block text-sm font-medium text-[#111827] dark:text-white mb-2">
+                    最低创新分 (Innovation Score)
+                  </label>
+                  <div class="flex items-center gap-4">
+                    <input
+                      v-model.number="notifSettings.min_innovation_score"
+                      type="range" min="1" max="10" step="1"
+                      class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#111827] dark:accent-gray-300"
+                    />
+                    <span class="text-sm font-bold text-[#111827] dark:text-white min-w-[2rem] text-center">{{ notifSettings.min_innovation_score }}</span>
+                  </div>
+                  <p class="mt-1 text-xs text-[#6B7280]">创新分达到此值以上时触发通知</p>
+                </div>
+
+                <div>
+                  <label class="block text-sm font-medium text-[#111827] dark:text-white mb-2">
+                    最低深度分 (Depth Score)
+                  </label>
+                  <div class="flex items-center gap-4">
+                    <input
+                      v-model.number="notifSettings.min_depth_score"
+                      type="range" min="1" max="10" step="1"
+                      class="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#111827] dark:accent-gray-300"
+                    />
+                    <span class="text-sm font-bold text-[#111827] dark:text-white min-w-[2rem] text-center">{{ notifSettings.min_depth_score }}</span>
+                  </div>
+                  <p class="mt-1 text-xs text-[#6B7280]">深度分达到此值以上时触发通知</p>
+                </div>
+              </div>
+
+              <!-- 关注的 RSS 源 -->
+              <div>
+                <label class="block text-sm font-medium text-[#111827] dark:text-white mb-2">
+                  关注的 RSS 源
+                  <span class="text-xs font-normal text-[#6B7280] ml-1">（留空则监控所有源）</span>
+                </label>
+                <div v-if="configStore.sources && configStore.sources.length > 0" class="space-y-2 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+                  <label
+                    v-for="source in configStore.sources"
+                    :key="source.id"
+                    class="flex items-center gap-3 py-1.5 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      :value="source.id"
+                      v-model="notifSettings.watched_source_ids"
+                      class="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span class="text-sm text-[#111827] dark:text-white">{{ source.name }}</span>
+                    <span class="text-xs text-[#6B7280] ml-auto truncate max-w-[200px]">{{ source.url }}</span>
+                  </label>
+                </div>
+                <p v-else class="text-xs text-[#6B7280] p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  暂无 RSS 源，请先在上方添加订阅源
+                </p>
+              </div>
+
+            <!-- 推送渠道配置 -->
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="block text-sm font-medium text-[#111827] dark:text-white">
+                    推送渠道
+                    <span class="text-xs font-normal text-[#6B7280] ml-1">（将通知推送到手机）</span>
+                  </label>
+                  <button
+                    @click="addPushChannel"
+                    class="text-xs px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-1"
+                  >
+                    <span class="material-icons-outlined text-sm">add</span>
+                    添加渠道
+                  </button>
+                </div>
+
+                <div v-if="notifSettings.push_channels && notifSettings.push_channels.length > 0" class="space-y-3">
+                  <div
+                    v-for="(ch, idx) in notifSettings.push_channels"
+                    :key="idx"
+                    class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3"
+                  >
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center gap-3">
+                        <!-- 渠道类型 -->
+                        <span class="text-sm font-medium text-[#111827] dark:text-white">Bark (iOS)</span>
+                        <input type="hidden" v-model="ch.type" />
+                        <!-- 启用开关 -->
+                        <button
+                          @click="ch.enabled = !ch.enabled"
+                          :class="[
+                            'relative w-9 h-5 rounded-full transition-colors',
+                            ch.enabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'
+                          ]"
+                        >
+                          <span
+                            :class="[
+                              'absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform',
+                              ch.enabled ? 'translate-x-4' : 'translate-x-0'
+                            ]"
+                          />
+                        </button>
+                      </div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          @click="testPushChannel(ch, idx)"
+                          :disabled="pushTestingIdx === idx"
+                          class="text-xs px-2.5 py-1 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors disabled:opacity-50"
+                        >
+                          {{ pushTestingIdx === idx ? '测试中...' : '测试' }}
+                        </button>
+                        <button
+                          @click="removePushChannel(idx)"
+                          class="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                        >
+                          <span class="material-icons-outlined text-lg">delete</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Bark: server_url -->
+                    <div>
+                      <label class="block text-xs text-[#6B7280] mb-1">Bark 地址（含 Key）</label>
+                      <input v-model="ch.server_url" type="text" placeholder="https://api.day.app/YOUR_KEY"
+                        class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-[#111827] dark:text-white rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700" />
+                      <p class="text-xs text-[#6B7280] mt-1">打开 Bark App 复制推送地址粘贴到这里</p>
+                    </div>
+
+                    <!-- 测试结果 -->
+                    <div v-if="pushTestResults[idx]" :class="[
+                      'text-xs p-2 rounded',
+                      pushTestResults[idx].success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+                    ]">
+                      {{ pushTestResults[idx].message }}
+                    </div>
+                  </div>
+                </div>
+                <p v-else class="text-xs text-[#6B7280] p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                  暂未配置推送渠道，点击"添加渠道"开始配置
+                </p>
+              </div>
+            </div>
+
+            <!-- 保存按钮 -->
+            <div class="flex justify-end pt-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                @click="saveNotifSettings"
+                :disabled="notifSaving"
+                :class="['btn-primary', { 'opacity-60 cursor-not-allowed': notifSaving }]"
+              >
+                <span v-if="notifSaving" class="material-icons-outlined animate-spin">sync</span>
+                <span v-else class="material-icons-outlined">check</span>
+                <span>{{ notifSaving ? '保存中...' : '保存通知设置' }}</span>
+              </button>
+            </div>
+
+            <!-- 保存状态提示 -->
+            <div v-if="notifSaveStatus === 'success'" class="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
+              <span class="material-icons-outlined text-green-600 dark:text-green-400">check_circle</span>
+              <span class="text-sm font-medium text-green-800 dark:text-green-200">通知设置已保存</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 系统维护 -->
+      <section>
+        <h2 class="text-2xl font-bold text-[#111827] dark:text-white mb-6">系统维护</h2>
+        <div class="bg-white dark:bg-[#1F2937] rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-6">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-[#111827] dark:text-white">清理消息队列</h3>
+              <p class="text-xs text-[#6B7280] mt-1">清空 Redis Stream 中的所有待处理消息并重置消费者组。适用于数据库重置后清理残留消息。</p>
+            </div>
+            <button
+              @click="handlePurgeStream"
+              :disabled="purging"
+              :class="[
+                'px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 whitespace-nowrap',
+                purging
+                  ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                  : 'bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800'
+              ]"
+            >
+              <span v-if="purging" class="material-icons-outlined text-sm animate-spin">sync</span>
+              <span v-else class="material-icons-outlined text-sm">delete_sweep</span>
+              <span>{{ purging ? '清理中...' : '清理队列' }}</span>
+            </button>
+          </div>
+        </div>
+      </section>
     </div>
+
+    <!-- 模态框：推荐RSS源 -->
+    <Transition
+      enter-active-class="transition-all duration-300 ease-out"
+      enter-from-class="opacity-0"
+      leave-to-class="opacity-0"
+      leave-active-class="transition-all duration-300 ease-out"
+    >
+      <div v-if="showPresetModal" class="fixed inset-0 bg-black/30 z-50 flex items-center justify-center" @click.self="showPresetModal = false">
+        <Transition
+          enter-active-class="transition-all duration-300 ease-out"
+          enter-from-class="opacity-0 scale-95"
+          enter-to-class="opacity-100 scale-100"
+          leave-active-class="transition-all duration-200 ease-in"
+          leave-from-class="opacity-100 scale-100"
+          leave-to-class="opacity-0 scale-95"
+        >
+          <div class="bg-white dark:bg-[#1F2937] rounded-xl shadow-lg w-full max-w-2xl mx-4 flex flex-col max-h-[80vh]">
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div>
+                <h3 class="text-lg font-bold text-[#111827] dark:text-white">推荐订阅源</h3>
+                <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5">以下均为提供全文内容的 RSS 源，适合 LLM 深度评估</p>
+              </div>
+              <button @click="showPresetModal = false" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                <span class="material-icons-outlined">close</span>
+              </button>
+            </div>
+            <div class="overflow-y-auto flex-1 px-6 py-4 space-y-6">
+              <div v-for="category in PRESET_SOURCES" :key="category.name">
+                <div class="flex items-center gap-2 mb-3">
+                  <span class="text-base">{{ category.icon }}</span>
+                  <h4 class="text-sm font-semibold text-gray-900 dark:text-white">{{ category.name }}</h4>
+                  <div class="flex-1 h-px bg-gray-100 dark:bg-gray-700"></div>
+                </div>
+                <div class="space-y-2">
+                  <div
+                    v-for="source in category.sources"
+                    :key="source.url"
+                    class="flex items-start justify-between gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <div class="flex-1 min-w-0">
+                      <p class="text-sm font-medium text-gray-900 dark:text-white mb-0.5">{{ source.name }}</p>
+                      <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">{{ source.desc }}</p>
+                      <span class="text-xs text-gray-400 dark:text-gray-500 font-mono truncate block">{{ source.url }}</span>
+                    </div>
+                    <button
+                      @click="addPresetSource(source)"
+                      :disabled="isPresetAdded(source.url) || presetAdding[source.url]"
+                      class="flex-shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                      :class="isPresetAdded(source.url)
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default'
+                        : presetAdding[source.url]
+                          ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-400'"
+                    >
+                      <span class="material-icons-outlined text-sm">
+                        {{ isPresetAdded(source.url) ? 'check' : presetAdding[source.url] ? 'hourglass_empty' : 'add' }}
+                      </span>
+                      {{ isPresetAdded(source.url) ? '已添加' : presetAdding[source.url] ? '添加中' : '添加' }}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="px-6 py-3 border-t border-gray-100 dark:border-gray-700 flex justify-end">
+              <button @click="showPresetModal = false" class="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
+                关闭
+              </button>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
 
     <!-- 模态框：添加RSS源 -->
     <Transition
@@ -516,6 +888,202 @@ const apiKeyCopied = ref(false)
 const isRssSubmitting = ref(false)
 const isModelSubmitting = ref(false)
 
+// 推荐RSS源
+const showPresetModal = ref(false)
+const presetAdding = ref({})
+
+const PRESET_SOURCES = [
+  {
+    name: 'AI 与研究',
+    icon: '🤖',
+    sources: [
+      { name: 'The Gradient', url: 'https://thegradient.pub/rss/', desc: '学术级 AI 研究科普，深度分析前沿论文与趋势' },
+      { name: 'Simon Willison\'s Blog', url: 'https://simonwillison.net/atom/everything/', desc: '前 Django 作者，AI 工具与 LLM 应用的精准观察' },
+      { name: 'fast.ai Blog', url: 'https://www.fast.ai/index.xml', desc: '深度学习实践，Jeremy Howard 团队的研究与教程' },
+      { name: 'Lilian Weng\'s Blog', url: 'https://lilianweng.github.io/index.xml', desc: 'OpenAI 研究员，强化学习与 LLM 原理深度长文' },
+    ],
+  },
+  {
+    name: '技术社区',
+    icon: '💻',
+    sources: [
+      { name: 'Hacker News 全文', url: 'https://hnrss.org/frontpage', desc: '硅谷顶级技术讨论社区热帖，含完整内容' },
+      { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', desc: '深度技术报道，科学、计算机与文化' },
+      { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', desc: '科技产品与行业新闻，叙事性强' },
+    ],
+  },
+  {
+    name: '工程博客',
+    icon: '🛠️',
+    sources: [
+      { name: 'GitHub Blog', url: 'https://github.blog/feed/', desc: 'GitHub 官方工程博客，开发者工具与产品更新' },
+      { name: 'Cloudflare Blog', url: 'https://blog.cloudflare.com/rss/', desc: '网络、安全与边缘计算的深度工程实践' },
+      { name: 'Tailscale Blog', url: 'https://tailscale.com/blog/index.xml', desc: '网络与安全深度好文，写作质量极高' },
+    ],
+  },
+  {
+    name: '中文技术',
+    icon: '🇨🇳',
+    sources: [
+      { name: '阮一峰的网络日志', url: 'http://www.ruanyifeng.com/blog/atom.xml', desc: '每周科技文章与工具推荐，中文技术界标杆' },
+    ],
+  },
+]
+
+const isPresetAdded = (url) => {
+  return configStore.sources?.some(s => s.url === url)
+}
+
+const addPresetSource = async (source) => {
+  if (isPresetAdded(source.url) || presetAdding.value[source.url]) return
+  presetAdding.value[source.url] = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/sources`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: source.url,
+        author_name: source.name,
+        platform: 'blog',
+        priority: 7,
+        enabled: true,
+        fetch_interval_seconds: 3600,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || `HTTP ${res.status}`)
+    }
+    const newSource = await res.json()
+    configStore.sources.push({
+      id: newSource.id,
+      name: newSource.author_name || source.name,
+      url: newSource.url,
+      frequency: 'hourly',
+      status: 'active',
+      statusClass: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+      lastSyncTime: null,
+      lastSyncStatus: 'success',
+      syncLogs: [],
+    })
+    showToast(`已添加：${source.name}`, 'success', 2000)
+  } catch (err) {
+    showToast(`添加失败：${err.message}`, 'error', 2000)
+  } finally {
+    presetAdding.value[source.url] = false
+  }
+}
+
+// Notification settings
+const API_BASE_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:8080'}/api`
+const notifLoading = ref(false)
+const notifSaving = ref(false)
+const notifSaveStatus = ref(null)
+const notifSettings = ref({
+  min_innovation_score: 8,
+  min_depth_score: 7,
+  notify_on_interesting: true,
+  watched_source_ids: [],
+  enabled: true,
+  push_channels: [],
+})
+const pushTestingIdx = ref(null)
+const pushTestResults = ref({})
+
+// 系统维护：清理消息队列
+const purging = ref(false)
+const handlePurgeStream = async () => {
+  if (!confirm('确定要清空消息队列吗？这将删除所有待处理的评估任务。')) return
+  purging.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/admin/purge-stream`, { method: 'POST' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    showToast('消息队列已清理', 'success', 2000)
+  } catch (err) {
+    console.error('[Config] Failed to purge stream:', err)
+    showToast('清理失败: ' + err.message, 'error', 2000)
+  } finally {
+    purging.value = false
+  }
+}
+
+const loadNotifSettings = async () => {
+  notifLoading.value = true
+  try {
+    const res = await fetch(`${API_BASE_URL}/notifications/settings`)
+    if (res.ok) {
+      const data = await res.json()
+      notifSettings.value = {
+        min_innovation_score: data.min_innovation_score ?? 8,
+        min_depth_score: data.min_depth_score ?? 7,
+        notify_on_interesting: data.notify_on_interesting ?? true,
+        watched_source_ids: data.watched_source_ids ?? [],
+        enabled: data.enabled ?? true,
+        push_channels: data.push_channels ?? [],
+      }
+    }
+  } catch (err) {
+    console.error('[Config] Failed to load notification settings:', err)
+  } finally {
+    notifLoading.value = false
+  }
+}
+
+const saveNotifSettings = async () => {
+  notifSaving.value = true
+  notifSaveStatus.value = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/notifications/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(notifSettings.value),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    notifSaveStatus.value = 'success'
+    showToast('通知设置已保存', 'success', 2000)
+    setTimeout(() => { notifSaveStatus.value = null }, 3000)
+  } catch (err) {
+    console.error('[Config] Failed to save notification settings:', err)
+    showToast('保存通知设置失败', 'error', 2000)
+  } finally {
+    notifSaving.value = false
+  }
+}
+
+const addPushChannel = () => {
+  if (!notifSettings.value.push_channels) {
+    notifSettings.value.push_channels = []
+  }
+  notifSettings.value.push_channels.push({ type: 'bark', server_url: '', enabled: true })
+}
+
+const removePushChannel = (idx) => {
+  notifSettings.value.push_channels.splice(idx, 1)
+  pushTestResults.value = {}
+}
+
+const testPushChannel = async (channel, idx) => {
+  pushTestingIdx.value = idx
+  pushTestResults.value[idx] = null
+  try {
+    const res = await fetch(`${API_BASE_URL}/notifications/test-push`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      pushTestResults.value[idx] = { success: true, message: data.message || '测试消息已发送' }
+    } else {
+      pushTestResults.value[idx] = { success: false, message: data.detail || data.error || '测试失败' }
+    }
+  } catch (err) {
+    pushTestResults.value[idx] = { success: false, message: '网络错误: ' + err.message }
+  } finally {
+    pushTestingIdx.value = null
+  }
+}
+
 const rssErrors = ref({})
 const modelErrors = ref({})
 
@@ -626,6 +1194,19 @@ const handleSyncSource = async (source) => {
   }
 }
 
+// RSS 代理保存
+const handleSaveProxy = async () => {
+  const success = await configStore.saveRssProxy()
+  showToast(
+    success ? '代理配置已更新' : '保存失败',
+    success ? 'success' : 'error',
+    2000
+  )
+  if (success) {
+    setTimeout(() => { configStore.proxySaveStatus = null }, 3000)
+  }
+}
+
 // API Key复制
 const copyApiKey = async () => {
   try {
@@ -659,7 +1240,7 @@ const exportConfig = async () => {
 }
 
 onMounted(async () => {
-  await configStore.loadConfig()
+  await Promise.all([configStore.loadConfig(), loadNotifSettings()])
   console.log('[Config] Loaded config:', {
     apiKey: configStore.apiKey ? configStore.apiKey.substring(0, 20) + '***' : 'empty',
     modelName: configStore.modelName,

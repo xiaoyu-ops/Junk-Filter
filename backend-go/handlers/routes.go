@@ -9,6 +9,8 @@ func RegisterSourceRoutes(router *gin.Engine, handler *SourceHandler) {
 		sources.GET("", handler.ListSources)
 		sources.GET("/search", handler.SearchSources)  // ← 必须在 /:id 之前
 		sources.POST("/:id/fetch", handler.FetchSourceNow)  // ← 手动同步
+		sources.PUT("/:id/author-filter", handler.UpdateAuthorFilter)
+		sources.GET("/:id/authors", handler.GetSourceAuthors)
 		sources.GET("/:id", handler.GetSource)
 		sources.POST("", handler.CreateSource)
 		sources.PUT("/:id", handler.UpdateSource)
@@ -71,6 +73,20 @@ func RegisterConfigRoutes(router *gin.Engine, handler *ConfigHandler) {
 // RegisterAITaskRoutes registers AI-powered task creation routes
 func RegisterAITaskRoutes(router *gin.Engine, handler *AITaskHandler) {
 	router.POST("/api/tasks/ai-create", handler.HandleCreateTaskWithAI)
+}
+
+// RegisterNotificationRoutes registers notification-related routes
+func RegisterNotificationRoutes(router *gin.Engine, handler *NotificationHandler) {
+	notifications := router.Group("/api/notifications")
+	{
+		notifications.GET("", handler.ListNotifications)
+		notifications.GET("/stream", handler.StreamNotifications)
+		notifications.GET("/settings", handler.GetSettings)
+		notifications.PUT("/settings", handler.UpdateSettings)
+		notifications.POST("/test-push", handler.TestPush)
+		notifications.PUT("/read-all", handler.MarkAllAsRead)
+		notifications.PUT("/:id/read", handler.MarkAsRead)
+	}
 }
 
 // RegisterThreadRoutes registers thread-related routes

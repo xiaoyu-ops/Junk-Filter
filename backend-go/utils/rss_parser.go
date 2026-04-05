@@ -3,40 +3,96 @@ package utils
 import (
 	"crypto/md5"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	md "github.com/JohannesKaufmann/html-to-markdown"
 	"github.com/mmcdole/gofeed"
 )
 
 // RSSParser wraps gofeed parser
 type RSSParser struct {
-	parser *gofeed.Parser
+	parser   *gofeed.Parser
+	proxyURL string
+	mu       sync.Mutex
 }
 
 // NewRSSParser creates a new RSS parser, optionally with HTTP proxy
 func NewRSSParser(proxyURL ...string) *RSSParser {
 	fp := gofeed.NewParser()
 
+	var transport *http.Transport
 	if len(proxyURL) > 0 && proxyURL[0] != "" {
 		proxy, err := url.Parse(proxyURL[0])
 		if err == nil {
-			transport := &http.Transport{
+			transport = &http.Transport{
 				Proxy: http.ProxyURL(proxy),
-			}
-			fp.Client = &http.Client{
-				Transport: transport,
-				Timeout:   30 * time.Second,
 			}
 		}
 	}
 
-	return &RSSParser{
-		parser: fp,
+	if transport == nil {
+		// Explicitly set no proxy to avoid inheriting system/Docker proxy settings
+		transport = &http.Transport{
+			Proxy: nil,
+		}
 	}
+
+	fp.Client = &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+
+	pURL := ""
+	if len(proxyURL) > 0 {
+		pURL = proxyURL[0]
+	}
+
+	return &RSSParser{
+		parser:   fp,
+		proxyURL: pURL,
+	}
+}
+
+// SetProxyURL updates the proxy at runtime without restarting
+func (rp *RSSParser) SetProxyURL(proxyURL string) {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+
+	rp.proxyURL = proxyURL
+
+	var transport *http.Transport
+	if proxyURL != "" {
+		proxy, err := url.Parse(proxyURL)
+		if err == nil {
+			transport = &http.Transport{
+				Proxy: http.ProxyURL(proxy),
+			}
+		}
+	}
+
+	if transport == nil {
+		transport = &http.Transport{
+			Proxy: nil,
+		}
+	}
+
+	rp.parser.Client = &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+}
+
+// GetProxyURL returns the current proxy URL
+func (rp *RSSParser) GetProxyURL() string {
+	rp.mu.Lock()
+	defer rp.mu.Unlock()
+	return rp.proxyURL
 }
 
 // FeedItem represents a single feed item
@@ -47,6 +103,7 @@ type FeedItem struct {
 	Author      string
 	PublishedAt *time.Time
 	Content     string
+	ImageURLs   []string
 }
 
 // ParseFeed parses an RSS/Atom feed and returns items
@@ -102,33 +159,58 @@ func (rp *RSSParser) ParseFeed(feedURL string) ([]*FeedItem, error) {
 	return items, nil
 }
 
-// CleanContent removes HTML tags and unnecessary whitespace
+// ExtractImageURLs extracts all image URLs from HTML content
+func ExtractImageURLs(html string) []string {
+	if html == "" {
+		return nil
+	}
+
+	re := regexp.MustCompile(`<img[^>]+src=["']([^"']+)["']`)
+	matches := re.FindAllStringSubmatch(html, -1)
+
+	seen := make(map[string]bool)
+	var urls []string
+	for _, match := range matches {
+		if len(match) > 1 {
+			imgURL := strings.TrimSpace(match[1])
+			if imgURL != "" && !seen[imgURL] {
+				seen[imgURL] = true
+				urls = append(urls, imgURL)
+			}
+		}
+	}
+	return urls
+}
+
+// htmlConverter is a reusable HTML-to-Markdown converter
+var htmlConverter = md.NewConverter("", true, nil)
+
+// CleanContent converts HTML content to Markdown, preserving structure
 func CleanContent(content string) string {
 	if content == "" {
 		return ""
 	}
 
-	// Remove HTML tags
-	re := regexp.MustCompile(`<[^>]*>`)
-	content = re.ReplaceAllString(content, "")
-
-	// Decode HTML entities
-	content = strings.ReplaceAll(content, "&nbsp;", " ")
-	content = strings.ReplaceAll(content, "&amp;", "&")
-	content = strings.ReplaceAll(content, "&lt;", "<")
-	content = strings.ReplaceAll(content, "&gt;", ">")
-	content = strings.ReplaceAll(content, "&quot;", "\"")
-
-	// Remove extra whitespace
-	content = strings.TrimSpace(content)
-	content = regexp.MustCompile(`\s+`).ReplaceAllString(content, " ")
-
-	// Truncate if too long
-	if len(content) > 5000 {
-		content = content[:5000]
+	// Convert HTML to Markdown (preserves headings, lists, links, emphasis, code blocks, etc.)
+	markdown, err := htmlConverter.ConvertString(content)
+	if err != nil {
+		log.Printf("[CleanContent] HTML-to-Markdown failed, falling back to plain text: %v", err)
+		// Fallback: strip tags
+		re := regexp.MustCompile(`<[^>]*>`)
+		markdown = re.ReplaceAllString(content, "")
 	}
 
-	return content
+	// Clean up excessive blank lines (3+ consecutive newlines → 2)
+	markdown = regexp.MustCompile(`\n{3,}`).ReplaceAllString(markdown, "\n\n")
+	markdown = strings.TrimSpace(markdown)
+
+	// Truncate if too long (rune-safe to avoid splitting multi-byte UTF-8 characters)
+	runes := []rune(markdown)
+	if len(runes) > 2500 {
+		markdown = string(runes[:2500])
+	}
+
+	return markdown
 }
 
 // NormalizeURL normalizes a URL for consistency
@@ -160,6 +242,14 @@ func GenerateContentHash(url, title, content string) string {
 func SanitizeFeedItem(item *FeedItem) *FeedItem {
 	item.URL = NormalizeURL(item.URL)
 	item.Title = strings.TrimSpace(item.Title)
+
+	// Extract image URLs before stripping HTML
+	rawHTML := item.Content
+	if rawHTML == "" {
+		rawHTML = item.Description
+	}
+	item.ImageURLs = ExtractImageURLs(rawHTML)
+
 	item.Description = CleanContent(item.Description)
 	if item.Content != "" {
 		item.Content = CleanContent(item.Content)
