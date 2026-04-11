@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/junkfilter/backend-go/models"
@@ -103,6 +104,59 @@ func (ch *ContentHandler) GetContentStats(c *gin.Context) {
 		"discarded":  stats["DISCARDED"],
 		"total":      stats["PENDING"] + stats["PROCESSING"] + stats["EVALUATED"] + stats["DISCARDED"],
 	})
+}
+
+// GetContentTimeline 获取近N天每天已评估文章数量趋势
+func (ch *ContentHandler) GetContentTimeline(c *gin.Context) {
+	days := 7
+	if d := c.Query("days"); d != "" {
+		if n, err := strconv.Atoi(d); err == nil && n > 0 && n <= 30 {
+			days = n
+		}
+	}
+
+	query := `
+		SELECT DATE(updated_at) as date, COUNT(*) as count
+		FROM content
+		WHERE status = 'EVALUATED'
+		  AND updated_at >= NOW() - ($1 || ' days')::INTERVAL
+		GROUP BY DATE(updated_at)
+		ORDER BY date ASC
+	`
+
+	rows, err := ch.db.QueryContext(c.Request.Context(), query, days)
+	if err != nil {
+		log.Printf("Error querying content timeline: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get timeline"})
+		return
+	}
+	defer rows.Close()
+
+	// 将查询结果存入 map
+	countByDate := make(map[string]int)
+	for rows.Next() {
+		var date time.Time
+		var count int
+		if err := rows.Scan(&date, &count); err != nil {
+			continue
+		}
+		countByDate[date.Format("2006-01-02")] = count
+	}
+
+	// 构建完整的日期序列（补0）
+	type DayPoint struct {
+		Date  string `json:"date"`
+		Count int    `json:"count"`
+	}
+	result := make([]DayPoint, days)
+	now := time.Now()
+	for i := 0; i < days; i++ {
+		d := now.AddDate(0, 0, -(days - 1 - i))
+		key := d.Format("2006-01-02")
+		result[i] = DayPoint{Date: key, Count: countByDate[key]}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"timeline": result, "days": days})
 }
 
 // ListContent lists content with optional filtering

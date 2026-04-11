@@ -5,9 +5,6 @@
     <div class="max-w-2xl bg-gray-900 dark:bg-indigo-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 shadow-sm">
       <div class="flex items-end gap-3">
         <div class="break-words text-sm text-white whitespace-pre-wrap">{{ message.content }}</div>
-        <span v-if="message.timestamp" class="text-xs text-gray-300 opacity-70 whitespace-nowrap flex-shrink-0">
-          {{ formatTime(message.timestamp) }}
-        </span>
       </div>
     </div>
 
@@ -26,14 +23,18 @@
 
     <!-- AI 消息气泡 -->
     <div class="max-w-2xl bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-tl-sm p-4 shadow-sm">
+      <!-- Agent 执行步骤（DeepSeek 风格，有工具调用时显示） -->
+      <AgentSteps
+        v-if="message.toolCalls && message.toolCalls.length > 0"
+        :tool-calls="message.toolCalls"
+        :processing="!!message.processing"
+      />
       <!-- Markdown 渲染的内容 -->
       <div
+        v-if="message.content"
         class="prose prose-sm dark:prose-invert max-w-none text-gray-900 dark:text-gray-100"
         v-html="renderMarkdown(message.content)"
       />
-      <p v-if="message.timestamp" class="text-xs text-gray-500 dark:text-gray-400 mt-2 opacity-70">
-        {{ formatTime(message.timestamp) }}
-      </p>
     </div>
   </div>
 
@@ -91,6 +92,7 @@
 import { computed } from 'vue'
 import { useMarkdown } from '@/composables/useMarkdown'
 import ExecutionCard from './ExecutionCard.vue'
+import AgentSteps from './AgentSteps.vue'
 
 const props = defineProps({
   message: {

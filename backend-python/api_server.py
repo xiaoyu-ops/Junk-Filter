@@ -37,6 +37,95 @@ except ImportError:
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
+
+# ======================== 请求日志中间件（纯 ASGI，不缓冲 SSE）========================
+
+def _sanitize_log_body(body_bytes: bytes, max_len: int = 200) -> str:
+    """脱敏日志体：隐藏敏感字段、截断长字符串"""
+    if not body_bytes:
+        return "(empty)"
+    try:
+        data = json.loads(body_bytes)
+    except Exception:
+        return f"(non-JSON {len(body_bytes)}B)"
+
+    SENSITIVE = {"api_key", "apikey", "password", "token", "secret", "authorization"}
+
+    def _clean(k, v):
+        if isinstance(k, str) and k.lower() in SENSITIVE:
+            return "***"
+        if isinstance(v, str) and len(v) > 100:
+            return v[:100] + "…"
+        if isinstance(v, list):
+            return f"[{len(v)} items]"
+        if isinstance(v, dict):
+            return {ik: _clean(ik, iv) for ik, iv in v.items()}
+        return v
+
+    sanitized = {k: _clean(k, v) for k, v in data.items()} if isinstance(data, dict) else data
+    out = json.dumps(sanitized, ensure_ascii=False)
+    return (out[:max_len] + "…") if len(out) > max_len else out
+
+
+class RequestLogMiddleware:
+    """纯 ASGI 日志中间件：记录请求/响应，不缓冲流式响应"""
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        method = scope.get("method", "")
+        path = scope.get("path", "")
+        qs = scope.get("query_string", b"").decode("utf-8", errors="replace")
+        client = scope.get("client") or ("?", 0)
+        ip = client[0]
+        start = time.time()
+        full_path = f"{path}?{qs}" if qs else path
+
+        # GET/HEAD/DELETE/OPTIONS：直接记录，不等 body
+        if method not in ("POST", "PUT", "PATCH"):
+            logger.info(f"[REQ] {method} {full_path} | ip={ip}")
+            status_holder = [0]
+
+            async def _send(msg):
+                if msg["type"] == "http.response.start":
+                    status_holder[0] = msg.get("status", 0)
+                    ms = (time.time() - start) * 1000
+                    logger.info(f"[RES] {status_holder[0]} {method} {path} | {ms:.0f}ms")
+                await send(msg)
+
+            await self.app(scope, receive, _send)
+            return
+
+        # POST/PUT/PATCH：拦截 body，记录后原样传给应用
+        buf = b""
+        logged = False
+
+        async def _receive():
+            nonlocal buf, logged
+            msg = await receive()
+            if msg["type"] == "http.request" and not logged:
+                buf += msg.get("body", b"")
+                if not msg.get("more_body", False):
+                    logger.info(f"[REQ] {method} {full_path} | ip={ip} | {_sanitize_log_body(buf)}")
+                    logged = True
+            return msg
+
+        status_holder = [0]
+
+        async def _send(msg):
+            if msg["type"] == "http.response.start":
+                status_holder[0] = msg.get("status", 0)
+                ms = (time.time() - start) * 1000
+                logger.info(f"[RES] {status_holder[0]} {method} {path} | {ms:.0f}ms")
+            await send(msg)
+
+        await self.app(scope, _receive, _send)
+
+
 # ======================== 数据模型 ========================
 
 class EvaluationRequest(BaseModel):
@@ -156,6 +245,7 @@ app.add_middleware(
     allow_headers=cors_headers,
     max_age=3600,
 )
+app.add_middleware(RequestLogMiddleware)
 
 logger.info(f"✓ CORS 配置: origins={cors_origins}, credentials={cors_allow_credentials}")
 
@@ -833,6 +923,67 @@ async def requeue_all_pending():
 
     logger.info(f"[Admin] Re-queued {queued} PENDING items for LLM evaluation")
     return {"queued": queued, "message": f"已将 {queued} 篇文章重新加入评估队列"}
+
+
+# ======================== Agent 对话接口 ========================
+
+class AgentChatRequest(BaseModel):
+    """Agent 对话请求"""
+    message: str
+    history: list = []
+    thread_id: Optional[int] = None
+    llm_config: Optional[dict] = None
+
+
+@app.post("/api/agent/chat")
+async def agent_chat(request: AgentChatRequest):
+    """
+    ReAct Agent 对话端点
+
+    SSE 流式输出：
+      {"type": "tool_call", "tool": "...", "args": {...}, "result": {...}}
+      {"type": "text",      "content": "最终回复"}
+      {"type": "done"}
+      {"type": "error",     "error": "..."}
+    """
+    from agents.react_agent import run_react
+
+    # 优先使用请求中的 llm_config，其次热加载 DB 配置
+    llm_config = request.llm_config or {}
+    if not llm_config.get("api_key"):
+        cache = _api_llm_config_cache
+        llm_config = {
+            "model_name": cache.get("model"),
+            "api_key":    cache.get("api_key"),
+            "base_url":   cache.get("base_url"),
+        }
+
+    db_pool = Database.get_pool()
+    logger.info(f"[Agent] 收到消息: {request.message!r}")
+
+    async def stream_generator():
+        try:
+            async for chunk in run_react(
+                message=request.message,
+                history=request.history,
+                llm_config=llm_config,
+                db_pool=db_pool,
+            ):
+                yield chunk
+        except Exception as e:
+            import json as _json
+            logger.error(f"[Agent Chat] Error: {e}", exc_info=True)
+            yield "data: " + _json.dumps({"type": "error", "error": str(e)}) + "\n\n"
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ======================== 根路径 ========================

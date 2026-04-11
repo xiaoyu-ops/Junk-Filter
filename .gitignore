@@ -1,11 +1,10 @@
-# 过程md文件夹
-description/
 CLAUDE.md
 # 环境配置
+.env
 *.env
 .env.local
 .env.*.local
-
+test.py
 # 临时测试文件
 test-sse-server.js
 test-sse.js
@@ -21,6 +20,7 @@ test_llm_config.py
 # Go
 backend-go/vendor/
 backend-go/*.exe
+backend-go/main
 *.out
 *.a
 *.so
@@ -53,6 +53,7 @@ frontend-vue/src-tauri/icons/android/
 frontend-vue/src-tauri/icons/Square*.png
 frontend-vue/src-tauri/icons/StoreLogo.png
 frontend-vue/dist/
+frontend-vue/.vite/
 
 # IDE
 .vscode/

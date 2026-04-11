@@ -344,3 +344,99 @@ npm run build
 
 现在你拥有一个现代化、安全、易维护的Vue 3前端项目！
 
+---
+
+## Mac 迁移清单（全项目）
+
+### 1. 环境依赖安装
+
+```bash
+# Go（抓取服务）
+brew install go
+
+# Python（评估服务 + Agent API）
+# 推荐用 conda，与 Windows 环境一致
+brew install --cask miniconda
+conda create -n junkfilter python=3.11
+conda activate junkfilter
+cd backend-python && pip install -r requirements.txt
+
+# Node.js（前端）
+brew install node
+
+# Rust + Tauri CLI（桌面端，如需打包）
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+cargo install tauri-cli
+
+# Docker Desktop（PostgreSQL + Redis）
+brew install --cask docker
+```
+
+### 2. 配置文件重建
+
+```bash
+# 项目根目录创建 .env（不在 git 中，需手动创建）
+cp .env.example .env   # 如果有 example 则复制，否则手动填写
+
+# .env 内容参考：
+# DB_HOST=localhost
+# DB_PORT=5432
+# DB_USER=junkfilter
+# DB_PASSWORD=junkfilter123
+# DB_NAME=junkfilter
+# REDIS_URL=redis://localhost:6379/0
+```
+
+### 3. 脚本权限修复
+
+Windows 的脚本在 Mac 上需要赋予执行权限：
+
+```bash
+chmod +x start-all.sh
+chmod +x verify-day1.sh
+```
+
+### 4. 行尾符检查
+
+如果 Git 在 Windows 上用了 CRLF，切换到 Mac 后 shell 脚本可能报错：
+
+```bash
+# 检查并修复行尾符
+file start-all.sh          # 若显示 CRLF 则需要转换
+sed -i '' 's/\r//' start-all.sh
+sed -i '' 's/\r//' verify-day1.sh
+```
+
+### 5. 启动顺序验证
+
+```bash
+# 1. 启动 Docker 容器
+docker-compose up -d
+docker-compose ps          # 确认 junkfilter-db 和 junkfilter-redis 均 healthy
+
+# 2. Go 服务（端口 8080）
+cd backend-go && go run main.go
+
+# 3. Python Agent API（端口 8083）
+conda activate junkfilter
+cd backend-python && python api_server.py
+
+# 4. Python Stream 消费者
+conda activate junkfilter
+cd backend-python && python main.py
+
+# 5. 前端（端口 5173）
+cd frontend-vue && npm install && npm run dev
+```
+
+### 6. 常见问题
+
+| 问题 | 原因 | 解法 |
+|------|------|------|
+| `go: command not found` | Go 未安装 | `brew install go` |
+| `docker: command not found` | Docker Desktop 未启动 | 打开 Docker Desktop app |
+| Python 包找不到 | conda 环境未激活 | `conda activate junkfilter` |
+| 端口 5432/6379 被占用 | 本地已有 PG/Redis | 修改 docker-compose.yml 端口或停掉本地服务 |
+| shell 脚本 `bad interpreter` | CRLF 行尾符 | 见第 4 步 |
+| Tauri 构建失败 | Rust 工具链未安装 | `rustup update` |
+

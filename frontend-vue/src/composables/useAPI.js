@@ -25,6 +25,9 @@ export const useAPI = () => {
   // Mock API URL（消息和 SSE - Mock 后端）
   const mockUrl = import.meta.env.VITE_MOCK_URL || 'http://localhost:3000'
 
+  // Python 后端 URL（Agent / 评估）
+  const pythonUrl = import.meta.env.VITE_PYTHON_URL || 'http://127.0.0.1:8083'
+
   // 是否正在加载
   const isLoading = ref(false)
 
@@ -538,6 +541,69 @@ export const useAPI = () => {
       } catch (error) {
         console.error('[API Task Chat] Initialization error:', error)
         onEvent({ status: 'error', error: error.message })
+        return () => {}
+      }
+    },
+
+    /**
+     * Agent 对话 — 调用 Python ReAct harness
+     * SSE 事件格式：
+     *   {type: "tool_call", tool, args, result}
+     *   {type: "text",      content}
+     *   {type: "done"}
+     *   {type: "error",     error}
+     */
+    agentChat: (message, history = [], llmConfig = {}, onEvent) => {
+      const url = `${pythonUrl}/api/agent/chat`
+      const body = JSON.stringify({
+        message,
+        history: history.map(m => ({
+          role: m.role === 'ai' ? 'assistant' : m.role,
+          content: m.content || '',
+        })),
+        llm_config: {
+          model_name: llmConfig.modelName,
+          api_key:    llmConfig.apiKey,
+          base_url:   llmConfig.baseUrl,
+        },
+      })
+
+      try {
+        fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+          .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+            const reader = res.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ''
+            const pump = async () => {
+              try {
+                while (true) {
+                  const { done, value } = await reader.read()
+                  if (done) break
+                  buffer += decoder.decode(value, { stream: true })
+                  const lines = buffer.split('\n')
+                  buffer = lines.pop()
+                  for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                      try { onEvent(JSON.parse(line.slice(6))) } catch { /* skip */ }
+                    }
+                  }
+                }
+                // flush 剩余 buffer（防止流结束时最后一个事件没有尾随 \n\n）
+                if (buffer.startsWith('data: ')) {
+                  try { onEvent(JSON.parse(buffer.slice(6))) } catch { /* skip */ }
+                }
+              } catch (err) {
+                onEvent({ type: 'error', error: err.message })
+              }
+            }
+            pump()
+          })
+          .catch(err => onEvent({ type: 'error', error: err.message }))
+
+        return () => {}
+      } catch (err) {
+        onEvent({ type: 'error', error: err.message })
         return () => {}
       }
     },

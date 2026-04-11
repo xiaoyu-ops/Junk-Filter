@@ -33,7 +33,7 @@
     >
       <!-- 消息列表循环（跳过正在处理中的空消息） -->
       <template v-for="msg in messages" :key="msg.id">
-        <ChatMessage v-if="!msg.processing || msg.content" :message="msg" />
+        <ChatMessage v-if="!msg.processing || msg.content || (msg.toolCalls && msg.toolCalls.length > 0)" :message="msg" />
       </template>
 
       <!-- AI 流式加载状态：仅在没有任何 AI 消息正在显示内容时才展示 -->
@@ -55,18 +55,12 @@
       class="flex-1 p-8 overflow-y-auto flex items-center justify-center"
     >
       <div class="text-center">
-        <div class="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-full mx-auto mb-4 flex items-center justify-center">
-          <span class="material-icons-outlined text-4xl text-gray-500 dark:text-gray-400">
-            {{ !taskStore.selectedTaskId ? 'chat' : 'chat_bubble_outline' }}
-          </span>
+        <div class="w-16 h-16 bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 rounded-full mx-auto mb-4 flex items-center justify-center">
+          <span class="material-icons-outlined text-4xl text-indigo-500 dark:text-indigo-400">smart_toy</span>
         </div>
-        <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-          {{ !taskStore.selectedTaskId ? '选择一个任务开始' : '暂无消息' }}
-        </h3>
+        <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-2">Agent 就绪</h3>
         <p class="text-gray-600 dark:text-gray-400 mb-6">
-          {{ !taskStore.selectedTaskId
-            ? '从左侧任务列表中选择一个任务，查看对话历史和执行详情'
-            : '该任务暂无消息，开始对话以创建记录' }}
+          你可以问我任何关于 RSS 内容、评估结果或系统状态的问题
         </p>
       </div>
     </div>
@@ -271,158 +265,122 @@ const handleSendMessage = async (e) => {
   messages.value.push(userMessage)
   inputText.value = ''
 
+  // 持久化用户消息到 DB
+  if (taskStore.selectedTaskId) {
+    messagesAPI.save(taskStore.selectedTaskId, userMessage).catch(() => {})
+  }
+
   // 设置加载状态
   isLoading.value = true
 
   try {
-    // 使用真实的 SSE 连接
     await handleSSEResponse(trimmedText)
   } catch (sseError) {
-    console.warn('[TaskChat] SSE 失败，降级到模拟响应:', sseError)
-    // SSE 失败时降级到模拟响应
-    await simulateAiResponse(trimmedText)
+    console.error('[Agent Chat] SSE 失败:', sseError)
   } finally {
     isLoading.value = false
   }
 }
 
 /**
- * 处理真实 SSE 流式聊天响应（Agent 调优与咨询）
- * 从 Go 后端的 /api/tasks/{id}/chat 接收自然语言回复
+ * 处理 Agent SSE 流式响应
+ * 调用 Python ReAct harness /api/agent/chat
+ * 事件类型：tool_call / text / done / error
  */
 const handleSSEResponse = async (userInput) => {
-  // 创建 AI 消息占位符
-  const aiMessagePlaceholder = {
+  const aiPlaceholder = {
     id: `msg-ai-${Date.now()}`,
     role: 'ai',
     type: 'text',
     content: '',
+    toolCalls: [],        // 工具调用记录（内联显示）
     timestamp: new Date().toISOString(),
     processing: true,
-    messageType: 'ai_reply',  // 标记为自然语言回复
   }
 
-  currentAiMessageId.value = aiMessagePlaceholder.id
-  let aiMessageAdded = false
-  let aiResponseContent = ''
-  let parameterUpdates = null
-  let referencedCards = []
+  currentAiMessageId.value = aiPlaceholder.id
+  let placeholderAdded = false
+
+  // 读取 LLM 配置
+  const savedConfig = localStorage.getItem('config') ? JSON.parse(localStorage.getItem('config')) : {}
+  const llmConfig = {
+    modelName: savedConfig.modelName || configStore.modelName,
+    apiKey:    savedConfig.apiKey    || configStore.apiKey,
+    baseUrl:   savedConfig.baseUrl   || configStore.baseUrl,
+  }
+
+  // 构建历史（去除占位符）
+  const history = messages.value.filter(m => m.content && !m.processing)
 
   try {
-    // 获取当前 LLM 和评估配置
-    // 优先从 localStorage 读取，其次从 store 读取
-    const savedConfig = localStorage.getItem('config') ? JSON.parse(localStorage.getItem('config')) : {}
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 60000)
 
-    const llmConfig = {
-      modelName: savedConfig.modelName || configStore.modelName,
-      apiKey: savedConfig.apiKey || configStore.apiKey,
-      baseUrl: savedConfig.baseUrl || configStore.baseUrl,
-    }
-    const evalConfig = {
-      temperature: savedConfig.temperature || configStore.temperature,
-      topP: savedConfig.topP || configStore.topP,
-      maxTokens: savedConfig.maxTokens || configStore.maxTokens,
-    }
-
-    console.log('[Task Chat] Using LLM Config:', llmConfig)
-    console.log('[Task Chat] Using Eval Config:', evalConfig)
-
-    // 启动新的任务聊天 API（传递配置参数）
-    closeSseConnection.value = chatAPI.taskChat(
-      taskStore.selectedTaskId,
-      userInput,
-      llmConfig,      // ← 传递 LLM 配置
-      evalConfig,     // ← 传递评估配置
-      taskStore.selectedThreadId,  // ← 传递子对话 ID
-      (eventData) => {
-        console.log('[Task Chat Event]', eventData)
-
-        // 首次接收数据时添加占位符
-        if (!aiMessageAdded) {
-          messages.value.push(aiMessagePlaceholder)
-          aiMessageAdded = true
-        }
-
-        // 处理不同的事件状态
-        if (eventData.status === 'processing') {
-          // 更新占位符显示处理中状态
-          const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
-          if (msgIndex !== -1) {
-            messages.value[msgIndex].processing = true
-            messages.value[msgIndex] = { ...messages.value[msgIndex] }
+      closeSseConnection.value = chatAPI.agentChat(
+        userInput,
+        history,
+        llmConfig,
+        (event) => {
+          // 首次有事件时插入占位符
+          if (!placeholderAdded) {
+            messages.value.push(aiPlaceholder)
+            placeholderAdded = true
           }
-        } else if (eventData.status === 'completed') {
-          // 收到完成事件，立即关闭 loading 状态
-          isLoading.value = false
 
-          // 处理完成，更新自然语言回复
-          if (eventData.result) {
-            const result = eventData.result
-            aiResponseContent = result.reply  // 自然语言回复
+          const idx = messages.value.findIndex(m => m.id === aiPlaceholder.id)
+          if (idx === -1) return
 
-            // 提取参数更新和卡片引用
-            parameterUpdates = result.parameter_updates
-            referencedCards = result.referenced_card_ids || []
+          if (event.type === 'tool_call') {
+            // 追加工具调用记录
+            messages.value[idx].toolCalls = [
+              ...messages.value[idx].toolCalls,
+              { tool: event.tool, args: event.args, result: event.result },
+            ]
+            messages.value[idx] = { ...messages.value[idx] }
 
-            const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
-            if (msgIndex !== -1) {
-              messages.value[msgIndex].content = aiResponseContent
-              messages.value[msgIndex].processing = false
-              messages.value[msgIndex].messageType = 'ai_reply'
-              messages.value[msgIndex].referencedCards = referencedCards
-              messages.value[msgIndex].parameterUpdates = parameterUpdates
-              messages.value[msgIndex] = { ...messages.value[msgIndex] }
+          } else if (event.type === 'chunk') {
+            // 流式文字片段 → 逐字追加
+            messages.value[idx].content = (messages.value[idx].content || '') + (event.content || '')
+            messages.value[idx] = { ...messages.value[idx] }
 
-              // 如果有参数更新建议，在控制台输出
-              if (parameterUpdates) {
-                console.log('[Agent Suggestion] 参数更新建议:', parameterUpdates)
-              }
+          } else if (event.type === 'text') {
+            messages.value[idx].content = event.content || ''
+            messages.value[idx] = { ...messages.value[idx] }
+
+          } else if (event.type === 'done') {
+            messages.value[idx].processing = false
+            messages.value[idx] = { ...messages.value[idx] }
+            isLoading.value = false
+            // 持久化 AI 回复到 DB
+            const aiMsg = messages.value[idx]
+            if (taskStore.selectedTaskId && aiMsg.content) {
+              messagesAPI.save(taskStore.selectedTaskId, {
+                role: 'ai', type: 'text', content: aiMsg.content,
+                metadata: JSON.stringify({ message_type: 'ai_reply' }),
+              }).catch(() => {})
             }
-          }
-        } else if (eventData.status === 'stream_end') {
-          // 流完成标记，正常结束
-          isLoading.value = false
-          console.log('[Task Chat] 流正常完成')
-        } else if (eventData.status === 'error') {
-          isLoading.value = false
-          // 错误处理
-          const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
-          if (msgIndex !== -1) {
-            messages.value[msgIndex].content = `⚠️ Agent 响应失败: ${eventData.error || '未知错误'}`
-            messages.value[msgIndex].processing = false
-            messages.value[msgIndex].type = 'error'
-            messages.value[msgIndex] = { ...messages.value[msgIndex] }
+            clearTimeout(timeout)
+            resolve()
+
+          } else if (event.type === 'error') {
+            messages.value[idx].content = `⚠️ ${event.error || '未知错误'}`
+            messages.value[idx].processing = false
+            messages.value[idx].type = 'error'
+            messages.value[idx] = { ...messages.value[idx] }
+            isLoading.value = false
+            clearTimeout(timeout)
+            resolve()
           }
         }
-      }
-    )
-
-    // 等待聊天完成（通过 Promise 或 timeout）
-    await new Promise(resolve => {
-      const checkCompletion = setInterval(() => {
-        const msg = messages.value.find(m => m.id === aiMessagePlaceholder.id)
-        if (msg && !msg.processing) {
-          clearInterval(checkCompletion)
-          resolve()
-        }
-      }, 100)
-
-      // 30秒超时
-      setTimeout(() => {
-        clearInterval(checkCompletion)
-        resolve()
-      }, 30000)
+      )
     })
-
   } catch (error) {
-    console.error('[Task Chat] 连接失败:', error)
-
-    // 如果消息已添加，标记为错误；否则抛出异常让调用方降级
-    const msgIndex = messages.value.findIndex(m => m.id === aiMessagePlaceholder.id)
-    if (msgIndex !== -1) {
-      messages.value[msgIndex].content = `⚠️ 连接失败: ${error.message}`
-      messages.value[msgIndex].processing = false
-      messages.value[msgIndex].type = 'error'
+    console.error('[Agent Chat] 连接失败:', error)
+    const idx = messages.value.findIndex(m => m.id === aiPlaceholder.id)
+    if (idx !== -1) {
+      messages.value[idx].content = `⚠️ 连接失败: ${error.message}`
+      messages.value[idx].processing = false
+      messages.value[idx].type = 'error'
     } else {
       throw error
     }
@@ -431,26 +389,6 @@ const handleSSEResponse = async (userInput) => {
   }
 }
 
-/**
- * 模拟 AI 回复（降级用或演示用）
- */
-const simulateAiResponse = async (userInput) => {
-  // 模拟网络延迟
-  await new Promise(resolve => setTimeout(resolve, 800))
-
-  const responseText = `我已收到你的消息："${userInput}"。我正在思考如何最好地帮助你...\n\n这是一条示例回复，用来演示 Markdown 渲染：\n\n### 功能示例\n- **加粗文本**\n- *斜体文本*\n- \`代码示例\`\n\n\`\`\`javascript\nconst hello = () => {\n  console.log('Hello World')\n}\n\`\`\``
-
-  // 创建 AI 消息
-  const aiMessage = {
-    id: `msg-ai-${Date.now()}`,
-    role: 'ai',
-    type: 'text',
-    content: responseText,
-    timestamp: new Date().toISOString(),
-  }
-
-  messages.value.push(aiMessage)
-}
 
 /**
  * 处理 Shift+Enter 换行

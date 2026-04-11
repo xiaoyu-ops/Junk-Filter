@@ -30,7 +30,7 @@
         to="/task"
         :class="['nav-link', { active: currentRoute === '/task' }]"
       >
-        分发任务
+        Agent
       </RouterLink>
       <RouterLink
         to="/reader"

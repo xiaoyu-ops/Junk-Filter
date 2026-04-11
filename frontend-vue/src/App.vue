@@ -5,7 +5,11 @@
 
     <!-- 页面内容 -->
     <main class="flex-1">
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <KeepAlive :include="['TaskDistribution']">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
     </main>
 
     <!-- Toast容器 -->

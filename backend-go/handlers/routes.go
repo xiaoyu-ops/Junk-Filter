@@ -22,7 +22,8 @@ func RegisterSourceRoutes(router *gin.Engine, handler *SourceHandler) {
 func RegisterContentRoutes(router *gin.Engine, handler *ContentHandler) {
 	content := router.Group("/api/content")
 	{
-		content.GET("/stats", handler.GetContentStats)  // ← 必须在 /:id 之前，防止 stats 被当作 ID
+		content.GET("/stats", handler.GetContentStats)          // ← 必须在 /:id 之前
+		content.GET("/stats/timeline", handler.GetContentTimeline) // 近N天评估趋势
 		content.POST("/stop-evaluation", handler.StopEvaluation)
 		content.POST("/restart-evaluation", handler.RestartEvaluation)
 		content.GET("", handler.ListContent)

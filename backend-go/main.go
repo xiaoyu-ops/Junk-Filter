@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -297,8 +300,60 @@ func initRedis(cfg *Config) *redis.Client {
 	})
 }
 
+// requestBodyLogger 记录 POST/PUT/PATCH 请求体（脱敏）
+func requestBodyLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		method := c.Request.Method
+		if method == "POST" || method == "PUT" || method == "PATCH" {
+			bodyBytes, err := io.ReadAll(c.Request.Body)
+			if err == nil {
+				c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+				log.Printf("[REQ] %s %s | ip=%s | %s",
+					method, c.Request.URL.Path, c.ClientIP(),
+					sanitizeLogBody(bodyBytes))
+			}
+		}
+		c.Next()
+	}
+}
+
+// sanitizeLogBody 脱敏日志体：隐藏敏感字段、截断长字符串
+func sanitizeLogBody(body []byte) string {
+	if len(body) == 0 {
+		return "(empty)"
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(body, &m); err != nil {
+		return fmt.Sprintf("(non-JSON %dB)", len(body))
+	}
+	sensitive := map[string]bool{
+		"api_key": true, "apikey": true, "password": true,
+		"token": true, "secret": true, "authorization": true,
+	}
+	for k, v := range m {
+		if sensitive[strings.ToLower(k)] {
+			m[k] = "***"
+			continue
+		}
+		switch val := v.(type) {
+		case string:
+			if len(val) > 100 {
+				m[k] = val[:100] + "…"
+			}
+		case []interface{}:
+			m[k] = fmt.Sprintf("[%d items]", len(val))
+		}
+	}
+	out, _ := json.Marshal(m)
+	if len(out) > 300 {
+		return string(out[:300]) + "…"
+	}
+	return string(out)
+}
+
 func startServer(port int) {
 	router := gin.Default()
+	router.Use(requestBodyLogger())
 
 	// 添加 CORS 中间件 - 环境变量驱动的严格模式
 	router.Use(func(c *gin.Context) {

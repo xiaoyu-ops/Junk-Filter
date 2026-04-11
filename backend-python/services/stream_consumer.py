@@ -43,7 +43,8 @@ class StreamConsumer:
         self.db_service = DBService(db_pool)
 
         # ContentEvaluationAgent - 从 settings 读取配置（启动时初始化，之后热加载）
-        model_id = settings.llm_model_id or settings.llm_model
+        # 优先用 DB 热加载的 llm_model，再 fallback 到环境变量 llm_model_id
+        model_id = settings.llm_model or settings.llm_model_id
         api_key = settings.openai_api_key or os.getenv("OPENAI_API_KEY", "")
         api_base = settings.llm_base_url or os.getenv("LLM_BASE_URL", "")
         logger.info(f"Initializing ContentEvaluationAgent with model:{model_id} (Consumer: {self.consumer_name})")

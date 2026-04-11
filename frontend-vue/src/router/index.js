@@ -37,7 +37,7 @@ const routes = [
       default: TaskDistribution,
       navbar: AppNavbar,
     },
-    meta: { title: 'Junk Filter - 分发任务' },
+    meta: { title: 'Junk Filter - Agent' },
   },
   {
     path: '/reader/:id?',

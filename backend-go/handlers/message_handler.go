@@ -107,6 +107,7 @@ func (mh *MessageHandler) CreateMessageForTask(c *gin.Context) {
 
 	var req CreateMessageForTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[Message] 400 bind error (task=%s): %v", taskIDStr, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
