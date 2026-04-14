@@ -1,0 +1,135 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    // ─────────────────────────────────────────────
+    // 基础设施（静默启动，不占独立 tab）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🐘 DB + Redis (Docker)",
+      "type": "shell",
+      "command": "docker-compose up -d postgres redis && until docker exec junkfilter-db pg_isready -U junkfilter -q; do sleep 1; done && echo '✓ DB ready'",
+      "presentation": {
+        "panel": "shared",
+        "reveal": "silent",
+        "close": true
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // Go 后端（依赖 DB 就绪）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🐹 Go Backend :8080",
+      "type": "shell",
+      "command": "cd backend-go && /opt/homebrew/bin/go run main.go",
+      "dependsOn": ["🐘 DB + Redis (Docker)"],
+      "presentation": {
+        "label": "Go :8080",
+        "group": "junkfilter",
+        "panel": "dedicated",
+        "reveal": "always",
+        "close": false
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // Python API（依赖 DB 就绪）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🐍 Python API :8083",
+      "type": "shell",
+      "command": "cd backend-python && /opt/homebrew/Caskroom/miniconda/base/envs/junkfilter/bin/python api_server.py",
+      "dependsOn": ["🐘 DB + Redis (Docker)"],
+      "presentation": {
+        "label": "Python API :8083",
+        "group": "junkfilter",
+        "panel": "dedicated",
+        "reveal": "always",
+        "close": false
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // Python Consumer（依赖 DB 就绪）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🐍 Python Consumer",
+      "type": "shell",
+      "command": "cd backend-python && /opt/homebrew/Caskroom/miniconda/base/envs/junkfilter/bin/python main.py",
+      "dependsOn": ["🐘 DB + Redis (Docker)"],
+      "presentation": {
+        "label": "Python Consumer",
+        "group": "junkfilter",
+        "panel": "dedicated",
+        "reveal": "always",
+        "close": false
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // Telegram Bot（依赖 DB 就绪）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🤖 Telegram Bot",
+      "type": "shell",
+      "command": "cd backend-python && /opt/homebrew/Caskroom/miniconda/base/envs/junkfilter/bin/python telegram_bot.py",
+      "dependsOn": ["🐘 DB + Redis (Docker)"],
+      "presentation": {
+        "label": "Telegram Bot",
+        "group": "junkfilter",
+        "panel": "dedicated",
+        "reveal": "always",
+        "close": false
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // 前端（不依赖 DB，直接启动）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🌐 Frontend :5173",
+      "type": "shell",
+      "command": "cd frontend-vue && npm run dev",
+      "presentation": {
+        "label": "Frontend :5173",
+        "group": "junkfilter",
+        "panel": "dedicated",
+        "reveal": "silent",
+        "close": false
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // 一键启动（并行跑四个服务，各自等 DB）
+    // ─────────────────────────────────────────────
+    {
+      "label": "🚀 Start All Services",
+      "dependsOn": [
+        "🐹 Go Backend :8080",
+        "🐍 Python API :8083",
+        "🐍 Python Consumer",
+        "🌐 Frontend :5173",
+        "🤖 Telegram Bot"
+      ],
+      "dependsOrder": "parallel",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    // ─────────────────────────────────────────────
+    // 停止所有服务
+    // ─────────────────────────────────────────────
+    {
+      "label": "🛑 Stop All Services",
+      "type": "shell",
+      "command": "kill $(lsof -ti:8080) 2>/dev/null; kill $(lsof -ti:8083) 2>/dev/null; kill $(lsof -ti:5173) 2>/dev/null; docker-compose stop postgres redis; echo '✓ All stopped'",
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
