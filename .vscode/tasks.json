@@ -25,7 +25,6 @@
       "dependsOn": ["🐘 DB + Redis (Docker)"],
       "presentation": {
         "label": "Go :8080",
-        "group": "junkfilter",
         "panel": "dedicated",
         "reveal": "always",
         "close": false
@@ -42,7 +41,6 @@
       "dependsOn": ["🐘 DB + Redis (Docker)"],
       "presentation": {
         "label": "Python API :8083",
-        "group": "junkfilter",
         "panel": "dedicated",
         "reveal": "always",
         "close": false
@@ -59,7 +57,6 @@
       "dependsOn": ["🐘 DB + Redis (Docker)"],
       "presentation": {
         "label": "Python Consumer",
-        "group": "junkfilter",
         "panel": "dedicated",
         "reveal": "always",
         "close": false
@@ -92,7 +89,6 @@
       "command": "cd frontend-vue && npm run dev",
       "presentation": {
         "label": "Frontend :5173",
-        "group": "junkfilter",
         "panel": "dedicated",
         "reveal": "silent",
         "close": false
