@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/junkfilter/backend-go/models"
@@ -37,12 +39,18 @@ func (sr *SourceRepository) Create(ctx context.Context, req *models.CreateSource
 		source.FetchIntervalSeconds = 3600
 	}
 
+	// Auto-derive favicon URL from the RSS source domain
+	if parsed, err := url.Parse(req.URL); err == nil && parsed.Host != "" {
+		faviconURL := fmt.Sprintf("%s://%s/favicon.ico", parsed.Scheme, parsed.Host)
+		source.FaviconURL = &faviconURL
+	}
+
 	err := sr.db.QueryRowContext(ctx,
-		`INSERT INTO sources (platform, url, author_name, priority, fetch_interval_seconds, enabled, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO sources (platform, url, author_name, priority, fetch_interval_seconds, enabled, favicon_url, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 RETURNING id, created_at, updated_at`,
 		source.Platform, source.URL, source.AuthorName, source.Priority,
-		source.FetchIntervalSeconds, source.Enabled, source.CreatedAt, source.UpdatedAt,
+		source.FetchIntervalSeconds, source.Enabled, source.FaviconURL, source.CreatedAt, source.UpdatedAt,
 	).Scan(&source.ID, &source.CreatedAt, &source.UpdatedAt)
 
 	if err != nil {

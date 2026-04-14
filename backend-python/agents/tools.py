@@ -165,7 +165,9 @@ async def _query_articles(
 
     score_filter = ""
     if min_score is not None:
-        score_filter = f"HAVING (COALESCE(e.innovation_score,0) + COALESCE(e.depth_score,0)) / 2.0 >= {float(min_score)}"
+        params.append(float(min_score))
+        score_filter = f"HAVING (COALESCE(e.innovation_score,0) + COALESCE(e.depth_score,0)) / 2.0 >= ${idx}"
+        idx += 1
 
     query = f"""
         SELECT c.id, c.title, c.status, c.original_url,

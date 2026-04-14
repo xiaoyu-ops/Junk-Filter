@@ -88,6 +88,7 @@ class ContentEvaluationAgent:
             "top_p": top_p,
             "max_tokens": max_tokens,
             "api_key": api_key,
+            "streaming": True,  # some relays only return content in stream mode
         }
         if api_base:
             llm_kwargs["base_url"] = api_base
@@ -95,7 +96,8 @@ class ContentEvaluationAgent:
         self.llm = ChatOpenAI(**llm_kwargs)
         logger.info(f"[ContentEvaluationAgent] LLM initialized: {model}")
 
-        self.system_prompt = """你是一个专业的内容评估专家。
+        self.system_prompt = """/no_think
+你是一个专业的内容评估专家。
 
 你需要评估提供的文章，并生成以下结构化JSON格式的评估：
 {
@@ -266,6 +268,15 @@ URL：{state['url']}
             ]
 
             response = self.llm.invoke(messages)
+
+            # 兼容 reasoning 模型：content 为空时从 additional_kwargs 取 reasoning_content
+            if not response.content:
+                reasoning = response.additional_kwargs.get("reasoning_content") or \
+                            response.additional_kwargs.get("reasoning") or ""
+                if reasoning:
+                    response.content = reasoning
+                    logger.debug("[ContentEvaluator] Using reasoning_content as response")
+
             state["messages"] = messages + [response]
             state["error"] = ""
             state["engine_used"] = "llm"

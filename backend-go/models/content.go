@@ -15,9 +15,13 @@ type StringArray []string
 
 func (a StringArray) Value() (driver.Value, error) {
 	if a == nil {
-		return pq.StringArray(nil).Value()
+		return "[]", nil
 	}
-	return pq.StringArray(a).Value()
+	b, err := json.Marshal([]string(a))
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
 }
 
 func (a *StringArray) Scan(src interface{}) error {

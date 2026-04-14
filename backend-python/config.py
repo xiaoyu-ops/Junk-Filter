@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2000
     llm_timeout: int = 60
-    llm_request_interval: float = 2.0  # seconds between LLM API calls (serial)
+    llm_request_interval: float = 0.0  # seconds between LLM API calls (0 for local model, >0 for external API rate limiting)
 
     # FastAPI 服务配置
     api_host: str = "0.0.0.0"

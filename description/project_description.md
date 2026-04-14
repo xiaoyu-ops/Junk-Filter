@@ -20,7 +20,7 @@
 
 - **ReAct 对话 Agent 层（Python + OpenAI Function Calling）**：自行实现基于 OpenAI Function Calling 协议的 ReAct 推理循环（兼容 GLM、DeepSeek 等任意 OpenAI 兼容接口），Agent 可自主决策调度 5 类工具（文章检索、管道状态查询、RSS 源增删、偏好更新），借助 AsyncOpenAI 实现全链路 SSE 流式推理，前端以 DeepSeek 风格可折叠执行面板实时展示工具调用过程与推理链路。
 
-**R（结果）** 系统支持多源并发抓取与三级去重，Agent 能以自然语言完成原本需要多个配置页面才能完成的操作；评估结果含 TLDR 与推理过程，可通过对话直接检索；完整交付 Go + Python + Vue 3 + Tauri 全栈闭环，含桌面端与 iOS 推送通知。
+**R（结果）** 系统支持多源并发抓取与三级去重，Agent 能以自然语言完成原本需要多个配置页面才能完成的操作；评估结果含 TLDR 与推理过程，可通过对话直接检索；完整交付 Go + Python + Vue 3 + Tauri 全栈闭环，含桌面端与 Telegram 双向推送控制（高分文章主动推送 + 命令调度 + 自然语言对话）。
 
 ---
 
@@ -37,6 +37,7 @@
 | 持久化 | PostgreSQL | 文章、评估结果、偏好、对话历史 |
 | 缓存 / 去重 | Redis | Bloom Filter、去重 Set、Stream 队列 |
 | 前端 | Vue 3 + Vite + Tauri | Web 应用 + 桌面端原生应用 |
+| 通知 / 控制 | Telegram Bot + python-telegram-bot | 双向控制：高分推送 + 命令 + 自然语言 Agent |
 
 ---
 
@@ -60,16 +61,21 @@
         │  从 DB 读取用户偏好 → 注入 system prompt
         │  LangGraph 评估 Agent（evaluate → parse → retry，最多 3 次）
         │  输出：innovation_score / depth_score / decision / tldr / reasoning
-        │  高分文章触发 Bark iOS 推送
+        │  高分文章触发 Telegram 推送通知
         ▼
   PostgreSQL（content + evaluation 表）
         │
         ├─► 前端 Timeline 页（卡片展示 + 详情抽屉 + 图片预览）
         │
-        └─► ReAct Agent（自然语言查询 / 管理操作）
-                │  tool: query_articles / get_pipeline_status
-                │  tool: add_source / remove_source / update_preferences
-                │  SSE 流式输出 → 前端 Agent 对话页实时渲染
+        ├─► ReAct Agent（自然语言查询 / 管理操作）
+        │       │  tool: query_articles / get_pipeline_status
+        │       │  tool: add_source / remove_source / update_preferences
+        │       │  SSE 流式输出 → 前端 Agent 对话页实时渲染
+        │
+        └─► Telegram Bot（双向控制）
+                │  /status /fetch /recent 快捷命令
+                │  自然语言消息 → 转发 ReAct Agent → 回复结果
+                │  白名单 chat_id 鉴权（私人专属）
 ```
 
 ---
@@ -129,6 +135,7 @@ EvaluationState
 - 工具调用过程 yield `{"type":"tool_call","tool":"...","args":{},"result":{}}`
 - 完成 yield `{"type":"done"}`
 - 兼容任意 OpenAI Function Calling 接口（GLM、DeepSeek、gpt-5.4 等）
+- **中继兼容**：部分第三方 relay 仅在 streaming 模式下返回 content（非流式时 content 为 null），LLM 客户端统一强制 `streaming=True`
 
 #### 4. 前端（Vue 3 + Tauri）
 
@@ -139,10 +146,24 @@ EvaluationState
 
 **Tauri 桌面端**：原生通知，跨平台打包，包体积远小于 Electron
 
-#### 5. 通知系统
+**RSS 源 Favicon 自动推导**：在 Go 后端添加 RSS 源时自动从 `url` 字段解析域名，构造 `scheme://host/favicon.ico` 并写入 `sources.favicon_url`，Timeline 卡片无需手动维护图标。
 
-- 评估完成后依据 `notification_settings` 表配置的分数阈值自动触发
-- 支持 Bark（iOS 推送），通过 `push_channels` JSONB 字段扩展多渠道
+#### 5. Telegram Bot（双向控制层）
+
+私人专属 Bot，通过 `notification_settings.push_channels` JSONB 字段存储 `bot_token` + `chat_id`，启动时从 DB 读取配置，无需重启即可热更换。
+
+**主动推送**：评估 Agent 对高分文章（decision=INTERESTING/BOOKMARK）调用 Telegram Bot API，MarkdownV2 格式发送标题、评分、TLDR 及原文链接。
+
+**命令控制**：
+| 命令 | 功能 |
+|------|------|
+| `/status` | 查看各状态文章数量（调 Go API） |
+| `/fetch` | 触发所有 RSS 源立即抓取（调 Go API） |
+| `/recent` | 展示最近 5 篇高分文章 |
+
+**自然语言**：任意文字消息转发给 ReAct Agent，支持与前端 Agent 对话页相同的全部查询和管理能力，Bot 内即可完成原本需要打开前端才能做的操作。
+
+**安全**：`_auth` 装饰器校验 `update.effective_chat.id` 是否在白名单，陌生人消息直接丢弃。
 
 ---
 
@@ -170,3 +191,5 @@ EvaluationState
 | 自行实现 ReAct 而非使用 Agent SDK | 需兼容 OpenAI Function Calling 协议的第三方接口（GLM、DeepSeek），Anthropic Agent SDK 不适用 |
 | SSE 而非 WebSocket | 推理输出为单向流，SSE 更简单；无需维护双向连接状态，服务端实现零额外复杂度 |
 | Tauri 而非 Electron | 包体积小 10 倍以上，Rust 安全边界更明确，原生通知支持更佳 |
+| Telegram 替代 Bark | Bark 仅支持 iOS 单向推送；Telegram Bot 跨平台、双向、可挂载 ReAct Agent，一个渠道覆盖推送 + 命令 + 自然语言控制 |
+| streaming=True 强制流式 | 第三方 relay 非流式响应 content 字段为 null；强制 streaming 保证与任意兼容 API 的可靠对接 |

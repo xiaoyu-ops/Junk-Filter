@@ -142,8 +142,8 @@ export const useConfigStore = defineStore('config', () => {
       }
     }
 
-    // 同时加载 RSS 源和代理配置
-    await Promise.all([loadSources(), loadRssProxy()])
+    // 同时加载 RSS 源、代理配置，以及后端 LLM 配置（model_name/base_url 以 DB 为准）
+    await Promise.all([loadSources(), loadRssProxy(), loadLLMConfigFromBackend()])
   }
 
   /**
@@ -161,6 +161,22 @@ export const useConfigStore = defineStore('config', () => {
       console.error('[Config Store] Failed to load RSS proxy:', error)
     } finally {
       isLoadingProxy.value = false
+    }
+  }
+
+  /**
+   * 从 Go 后端加载 LLM 配置（model_name 和 base_url 以 DB 为准；api_key 掩码故不覆盖）
+   */
+  const loadLLMConfigFromBackend = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/config/llm`)
+      if (!response.ok) return
+      const data = await response.json()
+      if (data.model_name) modelName.value = data.model_name
+      if (data.base_url !== undefined) baseUrl.value = data.base_url
+      // api_key returned as masked (e.g. "sk-abc1****"), do not overwrite local value
+    } catch (_) {
+      // backend not running during initial load — silently ignore
     }
   }
 

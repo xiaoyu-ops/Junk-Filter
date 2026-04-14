@@ -109,9 +109,9 @@ Telegram 用户发消息
 
 ## 前端改动（Config 页面）
 
-- 添加渠道时增加 "Telegram" 选项（现只有 Bark）
+- 将渠道类型从 Bark 替换为 Telegram
 - Telegram 渠道显示两个输入框：Bot Token、Chat ID
-- 保留 Bark 选项（不删除，两者可共存）
+- 删除所有 Bark 相关代码和 UI
 
 ---
 
