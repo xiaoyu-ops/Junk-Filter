@@ -463,7 +463,7 @@
                     <div class="flex items-center justify-between">
                       <div class="flex items-center gap-3">
                         <!-- 渠道类型 -->
-                        <span class="text-sm font-medium text-[#111827] dark:text-white">Bark (iOS)</span>
+                        <span class="text-sm font-medium text-[#111827] dark:text-white">Telegram</span>
                         <input type="hidden" v-model="ch.type" />
                         <!-- 启用开关 -->
                         <button
@@ -498,12 +498,20 @@
                       </div>
                     </div>
 
-                    <!-- Bark: server_url -->
-                    <div>
-                      <label class="block text-xs text-[#6B7280] mb-1">Bark 地址（含 Key）</label>
-                      <input v-model="ch.server_url" type="text" placeholder="https://api.day.app/YOUR_KEY"
-                        class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-[#111827] dark:text-white rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700" />
-                      <p class="text-xs text-[#6B7280] mt-1">打开 Bark App 复制推送地址粘贴到这里</p>
+                    <!-- Telegram: bot_token + chat_id -->
+                    <div class="space-y-2">
+                      <div>
+                        <label class="block text-xs text-[#6B7280] mb-1">Bot Token</label>
+                        <input v-model="ch.bot_token" type="text" placeholder="1234567890:ABCDEFGxxxxxxxx"
+                          class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-[#111827] dark:text-white rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700" />
+                        <p class="text-xs text-[#6B7280] mt-1">从 @BotFather 获取</p>
+                      </div>
+                      <div>
+                        <label class="block text-xs text-[#6B7280] mb-1">Chat ID</label>
+                        <input v-model="ch.chat_id" type="text" placeholder="123456789"
+                          class="w-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-[#111827] dark:text-white rounded-lg py-1.5 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-gray-200 dark:focus:ring-gray-700" />
+                        <p class="text-xs text-[#6B7280] mt-1">给 @userinfobot 发消息获取你的 Chat ID</p>
+                      </div>
                     </div>
 
                     <!-- 测试结果 -->
@@ -1054,7 +1062,7 @@ const addPushChannel = () => {
   if (!notifSettings.value.push_channels) {
     notifSettings.value.push_channels = []
   }
-  notifSettings.value.push_channels.push({ type: 'bark', server_url: '', enabled: true })
+  notifSettings.value.push_channels.push({ type: 'telegram', bot_token: '', chat_id: '', enabled: true })
 }
 
 const removePushChannel = (idx) => {
