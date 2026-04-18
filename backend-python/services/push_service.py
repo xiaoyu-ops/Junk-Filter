@@ -2,6 +2,7 @@
 Push Service - Send notifications via Telegram
 """
 
+import json
 import logging
 import aiohttp
 
@@ -26,10 +27,22 @@ async def push_to_channels(
             return
 
         channels = row["push_channels"]
+
+        if isinstance(channels, str):
+            try:
+                channels = json.loads(channels)
+            except Exception:
+                return
+
         if not channels or not isinstance(channels, list):
             return
 
         for channel in channels:
+            if isinstance(channel, str):
+                try:
+                    channel = json.loads(channel)
+                except Exception:
+                    continue
             if not channel.get("enabled", False):
                 continue
 
@@ -71,7 +84,7 @@ async def _push_telegram(
         f"📰 *标题：* {_escape(title)}\n"
         f"⭐ 创新 {innovation_score}/10 \\| 深度 {depth_score}/10\n"
         f"🏷️ {_escape(decision)}\n\n"
-        f"💡 *TL;DR：* {_escape(summary)}\n\n"
+        f"💡 *摘要：* {_escape(summary)}\n\n"
     )
     if url:
         text += f"🔗 {_escape(url)}"

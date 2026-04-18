@@ -256,9 +256,9 @@
             <p class="text-base text-gray-700 dark:text-gray-300 leading-relaxed">{{ timelineStore.selectedCard.title }}</p>
           </div>
 
-          <!-- AI摘要 (TLDR) -->
+          <!-- AI摘要 -->
           <div>
-            <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">AI Summary</h4>
+            <h4 class="text-sm font-semibold text-gray-900 dark:text-white mb-2">摘要</h4>
             <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{{ timelineStore.selectedCard.tldr }}</p>
           </div>
 

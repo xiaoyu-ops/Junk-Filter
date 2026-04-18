@@ -232,8 +232,38 @@ async def _update_preferences(
         return {"error": "未提供任何偏好参数"}
 
     try:
-        from agents.preference_tools import _merge_and_save
-        await _merge_and_save(prefs, source_id=None)
-        return {"success": True, "updated": prefs, "message": "偏好已更新"}
+        import json
+        # 读取现有偏好
+        row = await db_pool.fetchrow(
+            "SELECT preferences FROM user_preferences WHERE source_id IS NULL"
+        )
+        existing = {}
+        if row and row["preferences"]:
+            existing = json.loads(row["preferences"]) if isinstance(row["preferences"], str) else row["preferences"]
+
+        # 增量合并：数组追加去重，标量覆盖
+        array_fields = ["liked_topics", "disliked_topics"]
+        for key, value in prefs.items():
+            if key in array_fields and isinstance(value, list):
+                existing_list = existing.get(key, [])
+                for item in value:
+                    if item not in existing_list:
+                        existing_list.append(item)
+                existing[key] = existing_list
+            else:
+                existing[key] = value
+
+        prefs_json = json.dumps(existing, ensure_ascii=False)
+        if row:
+            await db_pool.execute(
+                "UPDATE user_preferences SET preferences = $1, updated_at = NOW() WHERE source_id IS NULL",
+                prefs_json,
+            )
+        else:
+            await db_pool.execute(
+                "INSERT INTO user_preferences (source_id, preferences) VALUES (NULL, $1)",
+                prefs_json,
+            )
+        return {"success": True, "updated": existing, "message": "偏好已更新"}
     except Exception as e:
         return {"error": str(e)}

@@ -905,19 +905,36 @@ const PRESET_SOURCES = [
     name: 'AI 与研究',
     icon: '🤖',
     sources: [
+      { name: 'OpenAI Blog', url: 'https://openai.com/news/rss.xml', desc: 'OpenAI 官方博客，产品发布与研究进展' },
+      { name: 'Google DeepMind', url: 'https://deepmind.google/blog/rss.xml', desc: 'DeepMind 研究博客，前沿 AI 突破' },
+      { name: 'Hugging Face Blog', url: 'https://huggingface.co/blog/feed.xml', desc: 'AI 模型与工具生态，开源 ML 社区动态' },
       { name: 'The Gradient', url: 'https://thegradient.pub/rss/', desc: '学术级 AI 研究科普，深度分析前沿论文与趋势' },
       { name: 'Simon Willison\'s Blog', url: 'https://simonwillison.net/atom/everything/', desc: '前 Django 作者，AI 工具与 LLM 应用的精准观察' },
-      { name: 'fast.ai Blog', url: 'https://www.fast.ai/index.xml', desc: '深度学习实践，Jeremy Howard 团队的研究与教程' },
       { name: 'Lilian Weng\'s Blog', url: 'https://lilianweng.github.io/index.xml', desc: 'OpenAI 研究员，强化学习与 LLM 原理深度长文' },
+      { name: 'fast.ai Blog', url: 'https://www.fast.ai/index.xml', desc: '深度学习实践，Jeremy Howard 团队的研究与教程' },
     ],
   },
   {
     name: '技术社区',
     icon: '💻',
     sources: [
-      { name: 'Hacker News 全文', url: 'https://hnrss.org/frontpage', desc: '硅谷顶级技术讨论社区热帖，含完整内容' },
+      { name: 'Hacker News 精华', url: 'https://hnrss.org/best', desc: '硅谷技术社区最高评分帖，长期价值内容' },
+      { name: 'Hacker News 首页', url: 'https://hnrss.org/frontpage', desc: '硅谷技术社区实时热帖' },
+      { name: 'HN AI 讨论', url: 'https://hnrss.org/newest?q=AI', desc: 'Hacker News 上 AI 相关的最新讨论' },
+      { name: 'HN LLM 讨论', url: 'https://hnrss.org/newest?q=LLM', desc: 'Hacker News 上 LLM 相关的最新讨论' },
       { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', desc: '深度技术报道，科学、计算机与文化' },
+      { name: 'Dev.to', url: 'https://dev.to/feed', desc: '开发者社区文章，实用教程与经验分享' },
+    ],
+  },
+  {
+    name: '科技媒体',
+    icon: '📰',
+    sources: [
+      { name: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/', desc: 'MIT 技术评论，科技趋势的深度分析' },
+      { name: 'Wired', url: 'https://www.wired.com/feed/rss', desc: '连线杂志，科技与文化的前沿报道' },
+      { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', desc: '科技创业与投资动态' },
       { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', desc: '科技产品与行业新闻，叙事性强' },
+      { name: 'Nature', url: 'https://www.nature.com/nature.rss', desc: '顶级学术期刊，科学研究前沿动态' },
     ],
   },
   {
@@ -926,7 +943,39 @@ const PRESET_SOURCES = [
     sources: [
       { name: 'GitHub Blog', url: 'https://github.blog/feed/', desc: 'GitHub 官方工程博客，开发者工具与产品更新' },
       { name: 'Cloudflare Blog', url: 'https://blog.cloudflare.com/rss/', desc: '网络、安全与边缘计算的深度工程实践' },
+      { name: 'Netflix Tech Blog', url: 'https://netflixtechblog.com/feed', desc: 'Netflix 工程团队，大规模系统与 ML 实践' },
+      { name: 'AWS Blog', url: 'https://aws.amazon.com/blogs/aws/feed/', desc: 'AWS 官方博客，云服务与架构实践' },
+      { name: 'Meta Engineering', url: 'https://engineering.fb.com/feed/', desc: 'Meta 工程博客，大规模系统与开源项目' },
+      { name: 'Mozilla Hacks', url: 'https://hacks.mozilla.org/feed/', desc: 'Mozilla 工程师，Web 标准与浏览器技术' },
+      { name: 'Stripe Blog', url: 'https://stripe.com/blog/feed.rss', desc: 'Stripe 工程与产品思考，支付与 API 设计' },
+      { name: 'Supabase Blog', url: 'https://supabase.com/blog/rss.xml', desc: 'Supabase 技术博客，开源 BaaS 实践' },
+      { name: 'ByteByteGo', url: 'https://blog.bytebytego.com/feed', desc: '系统设计深度 Newsletter，图解大型系统架构' },
       { name: 'Tailscale Blog', url: 'https://tailscale.com/blog/index.xml', desc: '网络与安全深度好文，写作质量极高' },
+    ],
+  },
+  {
+    name: '编程语言',
+    icon: '⚙️',
+    sources: [
+      { name: 'Go Blog', url: 'https://go.dev/blog/feed.atom', desc: 'Go 语言官方博客，语言特性与最佳实践' },
+      { name: 'Rust Blog', url: 'https://blog.rust-lang.org/feed.xml', desc: 'Rust 官方博客，版本发布与语言进展' },
+      { name: 'This Week in Rust', url: 'https://this-week-in-rust.org/atom.xml', desc: 'Rust 社区周报，精选文章与项目' },
+      { name: 'TypeScript Blog', url: 'https://devblogs.microsoft.com/typescript/feed/', desc: 'TypeScript 官方博客，版本特性详解' },
+      { name: 'React Blog', url: 'https://react.dev/rss.xml', desc: 'React 官方博客，框架更新与最佳实践' },
+      { name: 'Vue Blog', url: 'https://blog.vuejs.org/feed.rss', desc: 'Vue.js 官方博客，生态系统动态' },
+      { name: 'Python Blog', url: 'https://blog.python.org/feeds/posts/default', desc: 'Python 官方博客，语言发展与社区动态' },
+      { name: 'Swift Blog', url: 'https://www.swift.org/atom.xml', desc: 'Swift 官方博客，Apple 生态开发进展' },
+      { name: 'Kotlin Blog', url: 'https://blog.jetbrains.com/kotlin/feed/', desc: 'Kotlin 官方博客，JVM 与多平台开发' },
+    ],
+  },
+  {
+    name: '安全',
+    icon: '🔒',
+    sources: [
+      { name: 'Krebs on Security', url: 'https://krebsonsecurity.com/feed/', desc: '知名安全记者 Brian Krebs，深度安全事件报道' },
+      { name: 'Schneier on Security', url: 'https://www.schneier.com/feed/', desc: '安全专家 Bruce Schneier，安全与隐私思考' },
+      { name: 'The Hacker News', url: 'https://feeds.feedburner.com/TheHackersNews', desc: '网络安全新闻，漏洞与威胁情报' },
+      { name: 'FreeBuf', url: 'https://www.freebuf.com/feed', desc: '国内安全社区，漏洞分析与安全研究' },
     ],
   },
   {
@@ -934,6 +983,19 @@ const PRESET_SOURCES = [
     icon: '🇨🇳',
     sources: [
       { name: '阮一峰的网络日志', url: 'http://www.ruanyifeng.com/blog/atom.xml', desc: '每周科技文章与工具推荐，中文技术界标杆' },
+      { name: 'LinuxDo 热门', url: 'https://linux.do/top.rss', desc: 'Linux Do 社区高热度帖，技术与开发者话题' },
+      { name: 'V2EX 技术', url: 'https://www.v2ex.com/feed/tab/tech.xml', desc: 'V2EX 技术板块，国内开发者讨论' },
+      { name: 'IT之家', url: 'https://www.ithome.com/rss/', desc: '国内科技资讯，产品与行业动态' },
+      { name: 'SSPAI', url: 'https://sspai.com/feed', desc: '少数派，效率工具与数字生活方式' },
+    ],
+  },
+  {
+    name: '产品与设计',
+    icon: '🎨',
+    sources: [
+      { name: 'Product Hunt', url: 'https://www.producthunt.com/feed', desc: '每日新产品发现，科技创业产品聚合' },
+      { name: 'Smashing Magazine', url: 'https://www.smashingmagazine.com/feed/', desc: 'Web 设计与前端开发深度教程' },
+      { name: 'Tailwind CSS Blog', url: 'https://tailwindcss.com/feeds/feed.xml', desc: 'Tailwind CSS 官方博客，框架更新与设计理念' },
     ],
   },
 ]
