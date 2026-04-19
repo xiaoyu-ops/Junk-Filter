@@ -145,10 +145,10 @@ class StreamConsumer:
                             )
 
                     if batch:
-                        # Process pending retries before new messages
+                        # Drain previously-failed PENDING items first so they don't starve
+                        # behind a flood of new messages after a consumer restart
                         await self._requeue_pending_content()
 
-                        # Evaluate batch using ContentEvaluationAgent
                         success, failure = await self.evaluate_batch(batch)
 
                         # ACK processed messages
@@ -333,6 +333,8 @@ class StreamConsumer:
             # Load user preferences and inject into evaluator prompt
             await self._inject_preferences(message)
 
+            # LangGraph's graph.invoke() is synchronous — run it in a thread pool
+            # to avoid blocking the asyncio event loop during LLM calls
             result = await asyncio.to_thread(
                 self.evaluator_agent.run,
                 message.title,

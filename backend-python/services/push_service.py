@@ -28,6 +28,8 @@ async def push_to_channels(
 
         channels = row["push_channels"]
 
+        # asyncpg may return JSONB as a Python object or as a raw JSON string
+        # depending on the codec configuration — handle both
         if isinstance(channels, str):
             try:
                 channels = json.loads(channels)
@@ -104,7 +106,8 @@ async def _push_telegram(
 
 
 def _escape(text: str) -> str:
-    """Escape special characters for Telegram MarkdownV2"""
+    """Escape for Telegram MarkdownV2 — all 18 special chars must be backslash-escaped
+    or the Bot API rejects the message with a parse error."""
     special = r"_*[]()~`>#+-=|{}.!"
     return "".join(f"\\{c}" if c in special else c for c in str(text))
 

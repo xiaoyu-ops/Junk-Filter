@@ -42,10 +42,11 @@ def _auth(func):
             logger.warning(f"[Bot] Unauthorized: {incoming_id}")
             return
 
-        now = asyncio.get_event_loop().time()
+        now = asyncio.get_running_loop().time()
         last = _last_message_time.get(incoming_id, 0)
         if now - last < RATE_LIMIT_SECONDS:
             logger.debug(f"[Bot] Rate limited: {incoming_id}")
+            await update.message.reply_text("⏳ 请稍等 1 秒再发")
             return
         _last_message_time[incoming_id] = now
 

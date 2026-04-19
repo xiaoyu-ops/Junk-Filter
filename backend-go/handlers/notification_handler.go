@@ -221,12 +221,15 @@ func (nh *NotificationHandler) UpdateSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Settings updated", "settings": req})
 }
 
-// StreamNotifications provides SSE endpoint for real-time notification push
+// StreamNotifications provides SSE endpoint for real-time notification push.
+// Flow: Python stream_consumer → Redis PUBLISH "notifications" → this handler → browser EventSource
 // GET /api/notifications/stream
 func (nh *NotificationHandler) StreamNotifications(c *gin.Context) {
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
+	// Prevent nginx from buffering SSE frames — without this, notifications
+	// are held in nginx's buffer and arrive in bursts rather than in real time
 	c.Header("X-Accel-Buffering", "no")
 
 	flusher, ok := c.Writer.(http.Flusher)
@@ -235,7 +238,6 @@ func (nh *NotificationHandler) StreamNotifications(c *gin.Context) {
 		return
 	}
 
-	// Subscribe to Redis Pub/Sub notifications channel
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
 
@@ -244,18 +246,15 @@ func (nh *NotificationHandler) StreamNotifications(c *gin.Context) {
 
 	ch := pubsub.Channel()
 
-	// Send initial heartbeat
 	fmt.Fprintf(c.Writer, "data: {\"type\":\"connected\"}\n\n")
 	flusher.Flush()
 
-	// Listen for notifications
 	for {
 		select {
 		case msg, ok := <-ch:
 			if !ok {
 				return
 			}
-			// Parse and forward the notification
 			var notification map[string]interface{}
 			if err := json.Unmarshal([]byte(msg.Payload), &notification); err != nil {
 				continue
@@ -271,7 +270,7 @@ func (nh *NotificationHandler) StreamNotifications(c *gin.Context) {
 			return
 
 		case <-time.After(30 * time.Second):
-			// Heartbeat
+			// Heartbeat keeps the connection alive through proxies that close idle HTTP connections
 			fmt.Fprintf(c.Writer, "data: {\"type\":\"heartbeat\"}\n\n")
 			flusher.Flush()
 		}

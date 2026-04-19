@@ -53,9 +53,9 @@ func NewRSSService(
 	}
 }
 
-// Start begins the RSS fetching service
-// interval 现在作为最小轮询间隔（用于检查源是否需要更新）
-// 实际的更新频率由每个 RSS 源的 fetch_interval_seconds 决定
+// Start begins the RSS fetching service.
+// The ticker polls every 30s, but each source is only fetched when its own
+// fetch_interval_seconds has elapsed — one ticker serves all sources with different intervals.
 func (rs *RSSService) Start(ctx context.Context, interval time.Duration) error {
 	// Initialize bloom filter
 	if err := rs.dedupService.InitializeBloomFilter(ctx); err != nil {
@@ -189,18 +189,18 @@ func (rs *RSSService) fetchSource(ctx context.Context, source *models.Source) {
 }
 
 func (rs *RSSService) processItem(ctx context.Context, source *models.Source, item *utils.FeedItem) {
-	// Sanitize the item
 	item = utils.SanitizeFeedItem(item)
 
-	// Skip articles with too little content (RSS-only excerpt, not worth evaluating)
+	// Short-content filter before dedup — skip RSS excerpts with no real body,
+	// saving Redis and DB round-trips for content we'd discard anyway
 	if len([]rune(item.Content)) < 200 {
 		log.Printf("[Skip] Content too short (%d runes), skipping: %s", len([]rune(item.Content)), item.Title)
 		return
 	}
 
-	// Check author filter before dedup (save resources)
+	// Author filter before dedup — same reason: skip early before any I/O
 	if source.ShouldFilterAuthor(item.Author) {
-		return // Skip filtered author
+		return
 	}
 
 	// Check for duplicates

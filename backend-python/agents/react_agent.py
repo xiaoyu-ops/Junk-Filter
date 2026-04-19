@@ -17,6 +17,8 @@ from agents.tools import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
 
+# 8 rounds = enough for ~3-4 tool calls with intermediate reasoning steps;
+# guards against infinite loops if LLM keeps generating tool calls
 MAX_ITERATIONS = 8
 
 SYSTEM_PROMPT = """你是 Junk Filter 的 AI 助手，帮用户管理他们的 RSS 内容订阅系统。你可以正常聊天，也可以在需要时调用工具操作系统。
@@ -115,7 +117,8 @@ async def run_react(
                 text_content += delta.content
                 yield _sse({"type": "chunk", "content": delta.content})
 
-            # 工具调用 chunk → 只收集，不推送
+                # Tool call chunks arrive fragmented across multiple stream events;
+            # index is stable per tool call, so we accumulate name+args by index
             if delta.tool_calls:
                 for tc in delta.tool_calls:
                     idx = tc.index
@@ -145,6 +148,7 @@ async def run_react(
             }
             for tc in tool_calls_map.values()
         ]
+        # OpenAI API requires content=null (not empty string) when tool_calls are present
         messages.append({
             "role": "assistant",
             "content": text_content or None,

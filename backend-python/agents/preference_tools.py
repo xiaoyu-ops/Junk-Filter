@@ -14,12 +14,15 @@ from langchain_core.tools import tool
 
 logger = logging.getLogger(__name__)
 
-# Global reference to DB pool, set during app startup
+# Global pool set by api_server.py at startup via set_db_pool().
+# telegram_bot.py never calls set_db_pool(), so _db_pool is always None there.
+# The update_preferences tool in tools.py bypasses this global and uses the
+# db_pool passed directly as a parameter — that's the correct path for Bot context.
 _db_pool = None
 
 
 def set_db_pool(pool):
-    """Set the database pool for preference tools"""
+    """Set the database pool — called only by api_server.py, not by telegram_bot.py"""
     global _db_pool
     _db_pool = pool
 

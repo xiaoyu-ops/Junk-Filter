@@ -37,7 +37,8 @@ func NewRSSParser(proxyURL ...string) *RSSParser {
 	}
 
 	if transport == nil {
-		// Explicitly set no proxy to avoid inheriting system/Docker proxy settings
+		// Explicitly nil proxy — without this, Go inherits HTTP_PROXY env var,
+		// which can silently route all RSS traffic through a container-level proxy
 		transport = &http.Transport{
 			Proxy: nil,
 		}
@@ -204,7 +205,7 @@ func CleanContent(content string) string {
 	markdown = regexp.MustCompile(`\n{3,}`).ReplaceAllString(markdown, "\n\n")
 	markdown = strings.TrimSpace(markdown)
 
-	// Truncate if too long (rune-safe to avoid splitting multi-byte UTF-8 characters)
+	// Truncate to 2500 runes (rune-safe for CJK) — LLM context window budget
 	runes := []rune(markdown)
 	if len(runes) > 2500 {
 		markdown = string(runes[:2500])
@@ -243,11 +244,11 @@ func SanitizeFeedItem(item *FeedItem) *FeedItem {
 	item.URL = NormalizeURL(item.URL)
 	item.Title = strings.TrimSpace(item.Title)
 
-	// Extract image URLs before stripping HTML
 	rawHTML := item.Content
 	if rawHTML == "" {
 		rawHTML = item.Description
 	}
+	// Image extraction MUST happen before CleanContent — HTML-to-Markdown strips all <img> tags
 	item.ImageURLs = ExtractImageURLs(rawHTML)
 
 	item.Description = CleanContent(item.Description)

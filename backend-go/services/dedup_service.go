@@ -89,11 +89,13 @@ func (ds *DedupService) InitializeBloomFilter(ctx context.Context) error {
 	return nil
 }
 
-// IsDuplicate checks if URL is duplicate using three-layer dedup
+// IsDuplicate checks if URL is duplicate using three-layer dedup.
+// L1 (Bloom Filter) has no false negatives — if it says "not seen", the URL is definitely new.
+// L2 (Redis) is only queried when L1 says "maybe seen", avoiding Redis RTT for truly new URLs.
+// L3 (DB UNIQUE) is the final safety net for concurrent inserts that slip through L1+L2.
 func (ds *DedupService) IsDuplicate(ctx context.Context, url, contentHash string) (bool, error) {
-	// L1: Bloom Filter (fast rejection)
 	if ds.bloomFilter.Contains(url) {
-		// L2: Redis Set (exact check)
+		// L1 says "maybe duplicate" — confirm with exact Redis lookup
 		redisKey := fmt.Sprintf("dedup:url:%s", url)
 		exists, err := ds.redis.Exists(ctx, redisKey).Result()
 		if err != nil && err != redis.Nil {
@@ -103,11 +105,11 @@ func (ds *DedupService) IsDuplicate(ctx context.Context, url, contentHash string
 		if exists > 0 {
 			return true, nil // Confirmed duplicate
 		}
+		// L1 false positive: Bloom Filter said "seen" but Redis says "not seen" → treat as new
 	}
 
-	// L3: Database constraint will catch remaining duplicates
-	// This is handled by UNIQUE constraints on original_url and content_hash
-
+	// L3: Database UNIQUE constraint on original_url catches concurrent inserts
+	// that both passed L1+L2 simultaneously (race condition between goroutines)
 	return false, nil
 }
 

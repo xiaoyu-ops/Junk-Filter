@@ -133,7 +133,14 @@ class ContentEvaluationAgent:
         self.graph = self._build_graph()
 
     def _build_graph(self):
-        """构建 LangGraph 流程图"""
+        """构建 LangGraph 流程图
+
+        Graph topology:
+          evaluate → parse → [success→END, failed→END, retry→evaluate→parse→...]
+
+        The retry edge loops back to evaluate (re-invokes LLM), not to parse,
+        so each retry gets a fresh LLM response rather than re-parsing the same bad output.
+        """
         workflow = StateGraph(EvaluationState)
 
         workflow.add_node("evaluate", self._evaluate_node)
@@ -152,7 +159,8 @@ class ContentEvaluationAgent:
             }
         )
 
-        workflow.add_edge("retry", "parse")
+        # retry clears error state then feeds back into evaluate for a fresh LLM call
+        workflow.add_edge("retry", "evaluate")
 
         workflow.set_entry_point("evaluate")
 
@@ -269,7 +277,9 @@ URL：{state['url']}
 
             response = self.llm.invoke(messages)
 
-            # 兼容 reasoning 模型：content 为空时从 additional_kwargs 取 reasoning_content
+            # Some reasoning models (e.g. DeepSeek-R1) return an empty content field
+            # but put the actual JSON in additional_kwargs["reasoning_content"].
+            # Fall back to that field so parse_node has something to work with.
             if not response.content:
                 reasoning = response.additional_kwargs.get("reasoning_content") or \
                             response.additional_kwargs.get("reasoning") or ""
