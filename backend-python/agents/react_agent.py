@@ -17,9 +17,99 @@ from agents.tools import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
 
-# 8 rounds = enough for ~3-4 tool calls with intermediate reasoning steps;
-# guards against infinite loops if LLM keeps generating tool calls
 MAX_ITERATIONS = 8
+
+# Runtime cache: models confirmed to require Responses API (populated on first mismatch error)
+_RESPONSES_API_MODELS: set = set()
+
+
+def _to_responses_tools(chat_tools: list) -> list:
+    """Convert Chat Completions tool format to Responses API format."""
+    return [
+        {
+            "type": "function",
+            "name": t["function"]["name"],
+            "description": t["function"].get("description", ""),
+            "parameters": t["function"].get("parameters", {}),
+        }
+        for t in chat_tools if t.get("type") == "function"
+    ]
+
+
+async def _responses_api_loop(
+    client, model: str, input_items: list, db_pool
+) -> AsyncGenerator[str, None]:
+    """ReAct loop using OpenAI Responses API."""
+    responses_api = getattr(client, "responses", None)
+    if responses_api is None:
+        yield _sse({"type": "error", "error": "openai 包不支持 Responses API，请升级：pip install -U openai"})
+        return
+
+    tools = _to_responses_tools(TOOL_DEFINITIONS)
+
+    for iteration in range(MAX_ITERATIONS):
+        try:
+            stream = await responses_api.create(
+                model=model,
+                input=input_items,
+                tools=tools,
+                stream=True,
+            )
+        except Exception as e:
+            err_str = str(e)
+            logger.error(f"[ReAct/ResponsesAPI] 调用失败 (iter={iteration}): {err_str[:300]}")
+            yield _sse({"type": "error", "error": f"LLM 调用失败: {err_str[:200]}"})
+            return
+
+        text_content = ""
+        tool_calls = []
+
+        async for event in stream:
+            etype = getattr(event, "type", "")
+            if etype == "response.output_text.delta":
+                delta = getattr(event, "delta", "")
+                if delta:
+                    text_content += delta
+                    yield _sse({"type": "chunk", "content": delta})
+            elif etype == "response.output_item.done":
+                item = getattr(event, "item", None)
+                if item and getattr(item, "type", "") == "function_call":
+                    tool_calls.append({
+                        "id": getattr(item, "call_id", ""),
+                        "name": getattr(item, "name", ""),
+                        "args": getattr(item, "arguments", "{}"),
+                    })
+
+        if not tool_calls:
+            if not text_content:
+                yield _sse({"type": "chunk", "content": "（模型未返回内容）"})
+            yield _sse({"type": "done"})
+            return
+
+        for tc in tool_calls:
+            input_items.append({
+                "type": "function_call",
+                "call_id": tc["id"],
+                "name": tc["name"],
+                "arguments": tc["args"],
+            })
+
+        for tc in tool_calls:
+            try:
+                tool_args = json.loads(tc["args"] or "{}")
+            except Exception:
+                tool_args = {}
+            logger.info(f"[ReAct] 调用工具 {tc['name']}，参数: {tool_args}")
+            result = await execute_tool(tc["name"], tool_args, db_pool=db_pool)
+            logger.info(f"[ReAct] 工具 {tc['name']} 结果: {str(result)[:200]}")
+            yield _sse({"type": "tool_call", "tool": tc["name"], "args": tool_args, "result": result})
+            input_items.append({
+                "type": "function_call_output",
+                "call_id": tc["id"],
+                "output": json.dumps(result, ensure_ascii=False),
+            })
+
+    yield _sse({"type": "error", "error": "Agent 达到最大迭代次数，请换个方式提问"})
 
 SYSTEM_PROMPT = """你是 Junk Filter 的 AI 助手，帮用户管理他们的 RSS 内容订阅系统。你可以正常聊天，也可以在需要时调用工具操作系统。
 
@@ -80,6 +170,12 @@ async def run_react(
             messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": message})
 
+    # 若该模型已被识别为只支持 Responses API，直接走新路径
+    if model in _RESPONSES_API_MODELS or llm_config.get("use_responses_api", False):
+        async for item in _responses_api_loop(client, model, messages, db_pool):
+            yield item
+        return
+
     # ── ReAct 循环 ──────────────────────────────────────────────────────────────
     for iteration in range(MAX_ITERATIONS):
         try:
@@ -94,6 +190,13 @@ async def run_react(
             )
         except Exception as e:
             err_str = str(e)
+            # 首次遇到格式不匹配错误：该模型只支持 Responses API，自动切换
+            if "openai_responses" in err_str and iteration == 0:
+                logger.info(f"[ReAct] {model} 仅支持 Responses API，自动切换")
+                _RESPONSES_API_MODELS.add(model)
+                async for item in _responses_api_loop(client, model, messages, db_pool):
+                    yield item
+                return
             # 504/HTML 响应：精简为可读提示
             if "<!DOCTYPE" in err_str or "<html" in err_str or "504" in err_str:
                 friendly = "LLM 服务暂时不可用（504 网关超时），请稍后重试"

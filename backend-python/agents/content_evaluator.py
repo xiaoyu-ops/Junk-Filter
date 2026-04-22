@@ -93,6 +93,8 @@ class ContentEvaluationAgent:
         if api_base:
             llm_kwargs["base_url"] = api_base
 
+        self._llm_kwargs = llm_kwargs.copy()
+        self._use_responses_api = False
         self.llm = ChatOpenAI(**llm_kwargs)
         logger.info(f"[ContentEvaluationAgent] LLM initialized: {model}")
 
@@ -266,34 +268,47 @@ URL：{state['url']}
 
 请严格返回JSON格式，不添加任何解释文字。
 """
+        from langchain_core.messages import HumanMessage, SystemMessage
 
-        try:
-            from langchain_core.messages import HumanMessage, SystemMessage
+        messages = [
+            SystemMessage(content=self.system_prompt),
+            HumanMessage(content=user_prompt),
+        ]
 
-            messages = [
-                SystemMessage(content=self.system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
-
-            response = self.llm.invoke(messages)
-
-            # Some reasoning models (e.g. DeepSeek-R1) return an empty content field
-            # but put the actual JSON in additional_kwargs["reasoning_content"].
-            # Fall back to that field so parse_node has something to work with.
+        def _extract_content(response):
+            # Some reasoning models put actual output in reasoning_content instead of content
             if not response.content:
                 reasoning = response.additional_kwargs.get("reasoning_content") or \
                             response.additional_kwargs.get("reasoning") or ""
                 if reasoning:
                     response.content = reasoning
                     logger.debug("[ContentEvaluator] Using reasoning_content as response")
+            return response
 
+        try:
+            response = _extract_content(self.llm.invoke(messages))
             state["messages"] = messages + [response]
             state["error"] = ""
             state["engine_used"] = "llm"
 
         except Exception as e:
-            state["error"] = f"LLM 调用失败: {str(e)}"
-            state["retry_count"] += 1
+            err_str = str(e)
+            # Auto-detect: model only supports Responses API → switch transparently
+            if "openai_responses" in err_str and not self._use_responses_api:
+                logger.info(f"[ContentEvaluator] {self.model} 仅支持 Responses API，自动切换")
+                try:
+                    self.llm = ChatOpenAI(**{**self._llm_kwargs, "use_responses_api": True})
+                    self._use_responses_api = True
+                    response = _extract_content(self.llm.invoke(messages))
+                    state["messages"] = messages + [response]
+                    state["error"] = ""
+                    state["engine_used"] = "llm"
+                except Exception as e2:
+                    state["error"] = f"LLM 调用失败: {str(e2)}"
+                    state["retry_count"] += 1
+            else:
+                state["error"] = f"LLM 调用失败: {err_str}"
+                state["retry_count"] += 1
 
         return state
 

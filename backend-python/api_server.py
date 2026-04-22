@@ -126,6 +126,9 @@ class RequestLogMiddleware:
         await self.app(scope, _receive, _send)
 
 
+# 全局信号量：限制同时发出的 LLM API 调用数，防止超过中转站并发上限
+_llm_semaphore = asyncio.Semaphore(1)
+
 # ======================== 数据模型 ========================
 
 class EvaluationRequest(BaseModel):
@@ -962,6 +965,12 @@ async def agent_chat(request: AgentChatRequest):
     logger.info(f"[Agent] 收到消息: {request.message!r}")
 
     async def stream_generator():
+        import json as _json
+        try:
+            await asyncio.wait_for(_llm_semaphore.acquire(), timeout=30.0)
+        except asyncio.TimeoutError:
+            yield "data: " + _json.dumps({"type": "error", "error": "服务繁忙，请稍后重试（前一个请求仍在进行中）"}) + "\n\n"
+            return
         try:
             async for chunk in run_react(
                 message=request.message,
@@ -971,9 +980,10 @@ async def agent_chat(request: AgentChatRequest):
             ):
                 yield chunk
         except Exception as e:
-            import json as _json
             logger.error(f"[Agent Chat] Error: {e}", exc_info=True)
             yield "data: " + _json.dumps({"type": "error", "error": str(e)}) + "\n\n"
+        finally:
+            _llm_semaphore.release()
 
     return StreamingResponse(
         stream_generator(),

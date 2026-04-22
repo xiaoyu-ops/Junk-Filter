@@ -149,8 +149,36 @@ async def cmd_recent(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ 查询失败：{e}")
 
 
+async def _reload_llm_config_if_stale(context: ContextTypes.DEFAULT_TYPE):
+    """每 60 秒从 DB 热加载一次 LLM 配置，无需重启 Bot"""
+    import time
+    now = time.monotonic()
+    last = context.bot_data.get("llm_config_last_reload", 0)
+    if now - last < 60:
+        return
+    context.bot_data["llm_config_last_reload"] = now
+    pool: asyncpg.pool.Pool = context.bot_data["db_pool"]
+    try:
+        row = await pool.fetchrow(
+            "SELECT default_model as model_name, api_key, base_url, temperature, max_tokens "
+            "FROM ai_config LIMIT 1"
+        )
+        if row and row["api_key"] and row["api_key"] != "sk-placeholder":
+            context.bot_data["llm_config"] = {
+                "model_name": row["model_name"],
+                "api_key": row["api_key"],
+                "base_url": row["base_url"],
+                "temperature": float(row["temperature"] or 0.7),
+                "max_tokens": int(row["max_tokens"] or 2000),
+            }
+            logger.debug("[Bot] LLM config hot-reloaded")
+    except Exception as e:
+        logger.warning(f"[Bot] Failed to reload LLM config: {e}")
+
+
 async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """实际处理自然语言消息（在队列 worker 中执行）"""
+    await _reload_llm_config_if_stale(context)
     pool: asyncpg.pool.Pool = context.bot_data["db_pool"]
     llm_config: dict = context.bot_data["llm_config"]
     histories: dict = context.bot_data["histories"]
@@ -178,11 +206,11 @@ async def _process_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return collected
 
     try:
-        response_text = await asyncio.wait_for(_collect_response(), timeout=60.0)
+        response_text = await asyncio.wait_for(_collect_response(), timeout=120.0)
     except asyncio.TimeoutError:
         logger.warning(f"[Bot] ReAct timeout for: {user_text[:50]}")
         await thinking_msg.delete()
-        await update.message.reply_text("❌ 响应超时（60s），请稍后重试")
+        await update.message.reply_text("❌ 响应超时（120s），请稍后重试")
         return
     except Exception as e:
         logger.error(f"[Bot] ReAct error: {e}")
