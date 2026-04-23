@@ -8,6 +8,30 @@
 
 ---
 
+## 待优化：终止/重启评估按钮的语义缺陷
+
+**现状：**
+- "终止评估"只执行一条 SQL：`UPDATE content SET status='DISCARDED' WHERE status IN ('PENDING','PROCESSING')`，不会真正暂停 Consumer 进程。
+- "重启评估"只执行：`UPDATE content SET status='PENDING' WHERE status='DISCARDED'`，同样不通知 Consumer。
+
+**两个已知问题：**
+
+**问题 1：终止可能被 Stream 残留消息覆盖**
+- 点击终止后，Redis Stream 里仍有这些文章的待处理消息
+- Consumer 下一轮取到消息时，会把状态从 DISCARDED 改回 PROCESSING，再改成 EVALUATED
+- 相当于"终止"被悄悄绕过了
+
+**问题 2：重启后文章不会自动重新入队**
+- `_requeue_pending_content`（把 PENDING 文章推进 Stream）只在 Consumer **启动时**调一次，主循环里不定期调用
+- 所以点完重启，文章状态变成 PENDING，但 Consumer 感知不到，不会主动去处理
+- 需要手动重启 Consumer 进程，或等 Go 有新文章进来触发下一批（也不会捞旧的 PENDING）
+
+**建议修复方向：**
+1. 终止时额外调用 `XDEL` 或 `purge-stream` 清空 Redis Stream 中对应消息，或在 Consumer 评估前检查状态是否仍为 PENDING（若已 DISCARDED 则跳过）
+2. 主循环里加一个定期（如每 N 轮）调用 `_requeue_pending_content` 的逻辑，或在重启评估接口里额外向 Stream 推一条触发信号
+
+---
+
 ## Bug：Telegram Bot 偶发性静默无响应
 
 **现象：** 向 Bot 发消息后无任何回复，Bot 进程仍在运行。
