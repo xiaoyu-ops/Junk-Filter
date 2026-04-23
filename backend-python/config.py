@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.7
     llm_max_tokens: int = 2000
     llm_timeout: int = 60
-    llm_request_interval: float = 0.0  # seconds between LLM API calls (0 for local model, >0 for external API rate limiting)
+    llm_request_interval: float = 3.0  # seconds between LLM API calls (3s ≈ 20 RPM, safe for Gemma free tier)
 
     # FastAPI 服务配置
     api_host: str = "0.0.0.0"
@@ -139,12 +139,10 @@ async def initialize_llm_config(pool: asyncpg.pool.Pool):
     db_config = await load_llm_config_from_db(pool)
 
     if db_config and db_config.get('api_key'):
-        # 使用数据库配置作为主要来源
+        # 使用数据库配置作为主要来源；DB base_url 优先于 .env 里的默认值
         settings.llm_model = db_config['model_name']
         settings.openai_api_key = db_config['api_key']
-        # 环境变量的 base_url 优先于数据库
-        if not settings.llm_base_url:
-            settings.llm_base_url = os.environ.get('LLM_BASE_URL', '')
+        settings.llm_base_url = db_config.get('base_url') or os.environ.get('LLM_BASE_URL', '')
         settings.llm_temperature = db_config.get('temperature', 0.7)
         settings.llm_max_tokens = db_config.get('max_tokens', 2000)
         logger.info(f"[Config] Using LLM config from database: {db_config['model_name']}, base_url: {settings.llm_base_url}")

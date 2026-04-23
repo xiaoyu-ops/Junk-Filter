@@ -236,7 +236,13 @@ async def _queue_worker(chat_id: str, queue: asyncio.Queue, context: ContextType
     while True:
         update = await queue.get()
         try:
-            await _process_message(update, context)
+            await asyncio.wait_for(_process_message(update, context), timeout=150.0)
+        except asyncio.TimeoutError:
+            logger.error(f"[Bot] Worker timeout for {chat_id}, message dropped")
+            try:
+                await update.message.reply_text("❌ 处理超时，请重试")
+            except Exception:
+                pass
         except Exception as e:
             logger.error(f"[Bot] Worker error for {chat_id}: {e}")
         finally:
@@ -326,7 +332,13 @@ async def _get_startup_config() -> tuple[str, str, dict]:
 
 async def _post_init(application: Application) -> None:
     """在 PTB 自己的 event loop 里创建 asyncpg 连接池，避免 event loop 错配"""
-    pool = await asyncpg.create_pool(_DB_DSN, min_size=5, max_size=20)
+    pool = await asyncpg.create_pool(
+        _DB_DSN,
+        min_size=2,
+        max_size=10,
+        max_inactive_connection_lifetime=300,  # 5 分钟不用的连接自动关闭重建，防止 stale 连接
+        command_timeout=30,
+    )
     application.bot_data["db_pool"] = pool
     logger.info("[Bot] DB pool created in PTB event loop")
 
@@ -353,6 +365,10 @@ if __name__ == "__main__":
     app = (
         Application.builder()
         .token(bot_token)
+        .connect_timeout(30)
+        .read_timeout(30)
+        .write_timeout(30)
+        .pool_timeout(30)
         .post_init(_post_init)
         .post_shutdown(_post_shutdown)
         .build()
@@ -360,7 +376,7 @@ if __name__ == "__main__":
 
     # 静态配置写入 bot_data（不依赖 event loop）
     app.bot_data["chat_id"] = chat_id
-    app.bot_data["allowed_ids"] = {"8137372066", "6580328406"}
+    app.bot_data["allowed_ids"] = {"8137372066", "6580328406", chat_id}
     app.bot_data["llm_config"] = llm_config
     app.bot_data["histories"] = {}
     app.bot_data["queues"] = {}

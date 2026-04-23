@@ -59,18 +59,17 @@ class StreamConsumer:
 
         # LLM config hot-reload cache
         self._llm_config_last_check = 0
+        # BUG7: track last LLM call time for time-based rate limiting
+        self._last_llm_call_time = 0.0
 
 
     async def initialize(self):
         """Initialize consumer group"""
         try:
-            # Create consumer group if it doesn't exist
-            # Using id="0-0" to read all messages from the beginning (for demo)
-            # In production, might want to use id="$" to only read new messages
             await self.redis.xgroup_create(
                 self.stream_name,
                 self.consumer_group,
-                id="0-0",  # Read from beginning
+                id="0-0",
                 mkstream=True,
             )
             logger.info(f"Created consumer group: {self.consumer_group}")
@@ -80,6 +79,16 @@ class StreamConsumer:
             else:
                 logger.error(f"Error creating consumer group: {e}")
                 raise
+
+        # BUG2: Reset any articles stuck in PROCESSING from a previous crashed run
+        stuck = await self.db_pool.fetch(
+            "UPDATE content SET status='PENDING' WHERE status='PROCESSING' RETURNING id"
+        )
+        if stuck:
+            logger.info(f"[Startup] Reset {len(stuck)} PROCESSING→PENDING articles from previous run")
+
+        # BUG5: Re-queue all PENDING articles at startup so stream is never silently empty
+        await self._requeue_pending_content()
 
     async def run(self):
         """Main consumer loop"""
@@ -145,14 +154,23 @@ class StreamConsumer:
                             )
 
                     if batch:
-                        # Drain previously-failed PENDING items first so they don't starve
-                        # behind a flood of new messages after a consumer restart
-                        await self._requeue_pending_content()
+                        # BUG3: Deduplicate batch by content_id; ACK duplicates immediately
+                        seen_ids: set = set()
+                        deduped_batch, deduped_ids, dup_ids = [], [], []
+                        for msg, mid in zip(batch, message_ids):
+                            if msg.content_id not in seen_ids:
+                                seen_ids.add(msg.content_id)
+                                deduped_batch.append(msg)
+                                deduped_ids.append(mid)
+                            else:
+                                dup_ids.append(mid)
+                                logger.debug(f"[Dedup] Skipped duplicate content_id {msg.content_id}")
+                        for mid in dup_ids:
+                            await self.redis.xack(self.stream_name, self.consumer_group, mid)
 
-                        success, failure = await self.evaluate_batch(batch)
+                        success, failure = await self.evaluate_batch(deduped_batch)
 
-                        # ACK processed messages
-                        for msg_id in message_ids:
+                        for msg_id in deduped_ids:
                             await self.redis.xack(
                                 self.stream_name,
                                 self.consumer_group,
@@ -197,12 +215,14 @@ class StreamConsumer:
                     logger.warning(f"Skipping content {message.content_id}: not found in database (stale message)")
                     continue
 
-                # Rate limit: pause between LLM calls (serial)
-                if success_count + failure_count > 0:
-                    await asyncio.sleep(settings.llm_request_interval)
+                # BUG7: time-based rate limiting — enforce minimum interval before every LLM call
+                wait = settings.llm_request_interval - (time.time() - self._last_llm_call_time)
+                if wait > 0:
+                    await asyncio.sleep(wait)
 
                 # Use ContentEvaluationAgent to evaluate
                 result = await self._evaluate_with_agent(message)
+                self._last_llm_call_time = time.time()  # BUG7: record after call
 
                 if result is None:
                     # LLM failed - increment eval_attempts, decide PENDING or DISCARDED
@@ -218,21 +238,25 @@ class StreamConsumer:
                 )
 
                 if eval_id is None:
+                    # Evaluation already exists (UniqueViolationError) — still mark content as EVALUATED
                     logger.warning(f"Could not create evaluation for {message.content_id}")
-                    failure_count += 1
+                    await self.db_service.update_content_status(message.content_id, "EVALUATED")
+                    success_count += 1
                     continue
 
                 # Update content status to EVALUATED
-                await self.db_service.update_content_status(
-                    message.content_id,
-                    "EVALUATED",
+                await self.db_service.update_content_status(message.content_id, "EVALUATED")
+
+                # BUG4: Reset eval_attempts on success so future re-processing starts fresh
+                await self.db_pool.execute(
+                    "UPDATE content SET eval_attempts = 0 WHERE id = $1", message.content_id
                 )
 
-                # Log status change
+                # BUG8: from_status is PROCESSING (set in _evaluate_with_agent), not PENDING
                 await self.db_service.log_status_change(
                     content_id=message.content_id,
                     task_id=message.task_id,
-                    from_status="PENDING",
+                    from_status="PROCESSING",
                     to_status="EVALUATED",
                     reason=f"Evaluated with decision: {result.decision}",
                 )
@@ -244,29 +268,25 @@ class StreamConsumer:
                     f"Decision={result.decision}"
                 )
 
-                # Check if content meets notification threshold (user-configurable)
                 if await self._should_notify(message, result):
                     await self._create_notification(message, result)
 
                 success_count += 1
 
             except Exception as e:
-                logger.error(f"Error evaluating content {message.content_id}: {e}")
-                # Mark as DISCARDED on error
+                logger.error(f"Error evaluating content {message.content_id}: {e}", exc_info=True)
+                # BUG6: Transient errors (network, 429, DB) → reset to PENDING for retry, not DISCARD
                 try:
-                    await self.db_service.update_content_status(
-                        message.content_id,
-                        "DISCARDED",
-                    )
+                    await self.db_service.update_content_status(message.content_id, "PENDING")
                     await self.db_service.log_status_change(
                         content_id=message.content_id,
                         task_id=message.task_id,
-                        from_status="PENDING",
-                        to_status="DISCARDED",
-                        reason=f"Evaluation error: {str(e)}",
+                        from_status="PROCESSING",  # BUG8
+                        to_status="PENDING",
+                        reason=f"Transient error, will retry: {str(e)[:100]}",
                     )
                 except Exception as log_e:
-                    logger.error(f"Error logging status change: {log_e}")
+                    logger.error(f"Error resetting status for {message.content_id}: {log_e}")
                 failure_count += 1
 
         return success_count, failure_count
@@ -361,7 +381,7 @@ class StreamConsumer:
                 await self.db_service.log_status_change(
                     content_id=message.content_id,
                     task_id=message.task_id,
-                    from_status="PENDING",
+                    from_status="PROCESSING",
                     to_status="DISCARDED",
                     reason=f"LLM evaluation failed after {attempts} attempts",
                 )
@@ -372,12 +392,12 @@ class StreamConsumer:
             logger.error(f"[Eval] Error handling eval failure for {message.content_id}: {e}")
 
     async def _requeue_pending_content(self):
-        """将之前 LLM 失败但未超限的 PENDING 内容重新推入 stream"""
+        """将所有未超限的 PENDING 内容重新推入 stream（含首次尝试的新文章）"""
         try:
             rows = await self.db_pool.fetch(
                 """SELECT id, task_id, title, original_url, clean_content, published_at, platform, author_name, content_hash
                    FROM content
-                   WHERE status = 'PENDING' AND eval_attempts > 0 AND eval_attempts < $1
+                   WHERE status = 'PENDING' AND eval_attempts >= 0 AND eval_attempts < $1
                    ORDER BY created_at ASC LIMIT $2""",
                 settings.llm_max_eval_attempts,
                 self.batch_size,

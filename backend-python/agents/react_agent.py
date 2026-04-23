@@ -23,6 +23,50 @@ MAX_ITERATIONS = 8
 _RESPONSES_API_MODELS: set = set()
 
 
+class _ThoughtFilter:
+    """Strips <thought>…</thought> blocks from streaming content (e.g. Gemma 4)."""
+
+    def __init__(self):
+        self._buf = ""
+        self._in_thought = False
+
+    def feed(self, text: str) -> str:
+        self._buf += text
+        out = ""
+        while True:
+            if not self._in_thought:
+                idx = self._buf.find("<thought>")
+                if idx == -1:
+                    # Guard: partial tag might be sitting at the tail
+                    tag = "<thought>"
+                    safe = len(self._buf)
+                    for i in range(1, len(tag)):
+                        if self._buf.endswith(tag[:i]):
+                            safe = len(self._buf) - i
+                            break
+                    out += self._buf[:safe]
+                    self._buf = self._buf[safe:]
+                    break
+                out += self._buf[:idx]
+                self._buf = self._buf[idx + len("<thought>"):]
+                self._in_thought = True
+            else:
+                idx = self._buf.find("</thought>")
+                if idx == -1:
+                    self._buf = ""
+                    break
+                self._buf = self._buf[idx + len("</thought>"):]
+                self._in_thought = False
+        return out
+
+    def flush(self) -> str:
+        if not self._in_thought:
+            out = self._buf
+            self._buf = ""
+            return out
+        return ""
+
+
 def _to_responses_tools(chat_tools: list) -> list:
     """Convert Chat Completions tool format to Responses API format."""
     return [
@@ -57,12 +101,20 @@ async def _responses_api_loop(
             )
         except Exception as e:
             err_str = str(e)
+            err_lower = err_str.lower()
             logger.error(f"[ReAct/ResponsesAPI] 调用失败 (iter={iteration}): {err_str[:300]}")
-            yield _sse({"type": "error", "error": f"LLM 调用失败: {err_str[:200]}"})
+            if "403" in err_str or "forbidden" in err_lower:
+                friendly = "LLM 调用被拒绝（403 Forbidden）：API Key 无效、无权限或 IP 被限制，请检查配置"
+            elif "<!doctype" in err_lower or "<html" in err_lower or "504" in err_str:
+                friendly = "LLM 服务暂时不可用（504 网关超时），请稍后重试"
+            else:
+                friendly = f"LLM 调用失败: {err_str[:200]}"
+            yield _sse({"type": "error", "error": friendly})
             return
 
         text_content = ""
         tool_calls = []
+        thought_filter = _ThoughtFilter()
 
         async for event in stream:
             etype = getattr(event, "type", "")
@@ -70,7 +122,9 @@ async def _responses_api_loop(
                 delta = getattr(event, "delta", "")
                 if delta:
                     text_content += delta
-                    yield _sse({"type": "chunk", "content": delta})
+                    visible = thought_filter.feed(delta)
+                    if visible:
+                        yield _sse({"type": "chunk", "content": visible})
             elif etype == "response.output_item.done":
                 item = getattr(event, "item", None)
                 if item and getattr(item, "type", "") == "function_call":
@@ -197,8 +251,11 @@ async def run_react(
                 async for item in _responses_api_loop(client, model, messages, db_pool):
                     yield item
                 return
-            # 504/HTML 响应：精简为可读提示
-            if "<!DOCTYPE" in err_str or "<html" in err_str or "504" in err_str:
+            # 中转站返回 HTTP 错误页：提取状态码给出可读提示
+            err_lower = err_str.lower()
+            if "403" in err_str or "forbidden" in err_lower:
+                friendly = "LLM 调用被拒绝（403 Forbidden）：API Key 无效、无权限或 IP 被限制，请检查配置"
+            elif "<!doctype" in err_lower or "<html" in err_lower or "504" in err_str:
                 friendly = "LLM 服务暂时不可用（504 网关超时），请稍后重试"
             else:
                 friendly = f"LLM 调用失败: {err_str[:200]}"
@@ -209,16 +266,19 @@ async def run_react(
         # ── 逐 chunk 处理流 ────────────────────────────────────────────────────
         text_content  = ""
         tool_calls_map: dict = {}   # index → {id, name, args}
+        thought_filter = _ThoughtFilter()
 
         async for chunk in stream:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
 
-            # 文字 chunk → 立即推送给前端（流式打字效果）
+            # 文字 chunk → 过滤 <thought> 后推送给前端（流式打字效果）
             if delta.content:
                 text_content += delta.content
-                yield _sse({"type": "chunk", "content": delta.content})
+                visible = thought_filter.feed(delta.content)
+                if visible:
+                    yield _sse({"type": "chunk", "content": visible})
 
                 # Tool call chunks arrive fragmented across multiple stream events;
             # index is stable per tool call, so we accumulate name+args by index
@@ -236,7 +296,9 @@ async def run_react(
 
         # ── 无工具调用 → 流式文字已全部推送，结束 ─────────────────────────────
         if not tool_calls_map:
-            # 兼容推理模型（content 为空但有 reasoning 的情况）
+            remaining = thought_filter.flush()
+            if remaining:
+                yield _sse({"type": "chunk", "content": remaining})
             if not text_content:
                 yield _sse({"type": "chunk", "content": "（模型未返回内容）"})
             yield _sse({"type": "done"})

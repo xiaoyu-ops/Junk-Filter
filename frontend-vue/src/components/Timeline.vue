@@ -3,7 +3,7 @@
     <!-- ✨ RSS 抓取进度条（新增） -->
     <div class="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-b border-blue-200 dark:border-blue-800 px-4 sm:px-6 lg:px-8 py-4">
       <div class="max-w-7xl mx-auto">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">RSS 抓取进度</h3>
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-3">RSS 抓取进度 <span class="text-gray-400 dark:text-gray-500 font-normal">（共 {{ timelineStore.stats.total }} 篇）</span></h3>
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <!-- Pending -->
           <div class="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
@@ -56,14 +56,20 @@
             </div>
           </div>
 
-          <!-- Total -->
+          <!-- Discarded -->
           <div class="bg-white dark:bg-gray-800 rounded-lg p-3 shadow-sm">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2">
-                <span class="material-symbols-outlined text-[20px] text-gray-500">article</span>
-                <span class="text-xs font-medium text-gray-600 dark:text-gray-400">总数</span>
+                <span class="material-symbols-outlined text-[20px] text-red-400">block</span>
+                <span class="text-xs font-medium text-gray-600 dark:text-gray-400">已丢弃</span>
               </div>
-              <span class="text-lg font-bold text-gray-600 dark:text-gray-400">{{ timelineStore.stats.total }}</span>
+              <span class="text-lg font-bold text-red-500 dark:text-red-400">{{ timelineStore.stats.discarded }}</span>
+            </div>
+            <div class="mt-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
+              <div
+                class="bg-red-400 h-1.5 rounded-full transition-all duration-300"
+                :style="{ width: totalWidth > 0 ? (timelineStore.stats.discarded / timelineStore.stats.total * 100) + '%' : '0%' }">
+              </div>
             </div>
           </div>
         </div>
