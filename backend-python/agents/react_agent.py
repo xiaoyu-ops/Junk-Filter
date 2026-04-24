@@ -1,12 +1,21 @@
 """
-ReAct Agent 主循环
-基于 OpenAI function calling（兼容 GLM-5 等 OpenAI 兼容接口）
+ReAct Agent 主循环 —— 推理-行动（Reasoning-Acting）循环
 
-SSE 事件格式：
-  {"type": "tool_call", "tool": "...", "args": {...}, "result": {...}}
-  {"type": "chunk",     "content": "流式文字片段"}
-  {"type": "done"}
-  {"type": "error",     "error": "错误信息"}
+架构：
+  1. 调用 LLM（带 tools 定义），流式接收响应
+  2. 若 LLM 返回 tool_calls → 执行对应工具 → 结果回传给 LLM → 再次调用 LLM
+  3. 若 LLM 只返回文字 → 流式推送给用户，结束
+
+输出：SSE（Server-Sent Events）流，前端用 EventSource 接收
+  {"type": "chunk",     "content": "流式文字片段"}   ← 正常对话文字
+  {"type": "tool_call", "tool": "...", "args": {...}, "result": {...}}  ← 工具执行
+  {"type": "done"}                                          ← 一轮对话结束
+  {"type": "error",     "error": "错误信息"}            ← 异常终止
+
+兼容层：
+  - Chat Completions API（标准 OpenAI 格式）
+  - Responses API（OpenAI 新格式，如 o1/o3 系列）
+  - 运行时自动检测：首次调用失败后缓存到 _RESPONSES_API_MODELS
 """
 
 import json
@@ -17,14 +26,24 @@ from agents.tools import TOOL_DEFINITIONS, execute_tool
 
 logger = logging.getLogger(__name__)
 
-MAX_ITERATIONS = 8
+MAX_ITERATIONS = 8  # ReAct 循环最大迭代次数，防止无限递归（如工具链死循环）
 
-# Runtime cache: models confirmed to require Responses API (populated on first mismatch error)
+# 运行时缓存：已确认只支持 Responses API 的模型（首次调用失败后自动记录）
+# 避免每次重启都重复探测模型类型
 _RESPONSES_API_MODELS: set = set()
 
 
 class _ThoughtFilter:
-    """Strips <thought>…</thought> blocks from streaming content (e.g. Gemma 4)."""
+    """
+    过滤流式输出中的 <thought>…</thought> 标签（如 Gemma 4 的思考链）。
+
+    为什么需要：某些模型在流式输出时会夹杂推理过程，如
+      <thought>我需要查询文章列表...</thought>用户想要...
+    这些思考内容不应展示给用户，需要实时过滤。
+
+    实现为状态机：维护一个缓冲区，遇到 <thought> 进入跳过态，
+    遇到 </thought> 退出。注意处理标签跨 chunk 的边界情况。
+    """
 
     def __init__(self):
         self._buf = ""
@@ -68,7 +87,13 @@ class _ThoughtFilter:
 
 
 def _to_responses_tools(chat_tools: list) -> list:
-    """Convert Chat Completions tool format to Responses API format."""
+    """
+    将 Chat Completions 的 tool 格式转换为 Responses API 格式。
+
+    Chat Completions: {"type": "function", "function": {"name": "...", "parameters": {...}}}
+    Responses API:    {"type": "function", "name": "...", "parameters": {...}}
+    区别：后者少了嵌套的 "function" 键，字段平铺。
+    """
     return [
         {
             "type": "function",
@@ -83,7 +108,14 @@ def _to_responses_tools(chat_tools: list) -> list:
 async def _responses_api_loop(
     client, model: str, input_items: list, db_pool
 ) -> AsyncGenerator[str, None]:
-    """ReAct loop using OpenAI Responses API."""
+    """
+    Responses API 路径的 ReAct 循环。
+
+    与 Chat Completions 的区别：
+      - input 参数格式不同（item list vs messages list）
+      - 工具定义格式不同（name/params vs function.name/function.parameters）
+      - tool_call 结果回传格式不同（function_call_output vs tool role message）
+    """
     responses_api = getattr(client, "responses", None)
     if responses_api is None:
         yield _sse({"type": "error", "error": "openai 包不支持 Responses API，请升级：pip install -U openai"})
@@ -189,8 +221,17 @@ async def run_react(
     db_pool=None,
 ) -> AsyncGenerator[str, None]:
     """
-    ReAct 主循环，异步生成器，yield SSE 文本行。
-    使用 AsyncOpenAI 实现真实流式输出。
+    ReAct 主入口。异步生成器，yield SSE 文本行。
+
+    执行流程：
+      1. 用 llm_config 初始化 AsyncOpenAI 客户端
+      2. 构建消息列表（system prompt + 历史消息 + 当前用户消息）
+      3. 若模型已知只支持 Responses API → 走 _responses_api_loop
+      4. 否则走标准 Chat Completions 路径
+      5. 在循环中：LLM 调用 → 检查 tool_calls → 有则执行工具并回传 → 无则输出文字并结束
+
+    关键设计：流式输出不等待完整响应，收到 chunk 立即 yield，
+    前端可以实时看到"打字效果"。
     """
     try:
         from openai import AsyncOpenAI
@@ -215,7 +256,8 @@ async def run_react(
         yield _sse({"type": "error", "error": f"LLM 客户端初始化失败: {e}"})
         return
 
-    # 构建消息列表
+    # 构建消息列表：system prompt + 最近 10 条历史 + 当前用户消息
+    # 只取最近 10 条是为了控制 token 消耗，避免长历史导致超出模型上下文窗口
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for msg in history[-10:]:
         role = "assistant" if msg.get("role") == "ai" else msg.get("role", "user")
@@ -231,16 +273,18 @@ async def run_react(
         return
 
     # ── ReAct 循环 ──────────────────────────────────────────────────────────────
+    # 每次迭代 = 一次 LLM 调用。若 LLM 决定调用工具，执行后回传结果，进入下一轮迭代。
+    # 最大迭代次数限制防止无限循环（如工具链调用形成闭环）。
     for iteration in range(MAX_ITERATIONS):
         try:
             stream = await client.chat.completions.create(
                 model=model,
                 messages=messages,
                 tools=TOOL_DEFINITIONS,
-                tool_choice="auto",
-                temperature=0.7,
-                max_tokens=1500,
-                stream=True,
+                tool_choice="auto",  # "auto" = LLM 自行决定是否调用工具；"none" = 禁止调工具
+                temperature=0.7,       # 控制创造性：0 = 确定性输出，1 = 高度随机
+                max_tokens=1500,       # 限制单轮输出长度，防止超长回复消耗过多 token
+                stream=True,  # 流式响应，chunk 到达即处理
             )
         except Exception as e:
             err_str = str(e)
@@ -280,8 +324,11 @@ async def run_react(
                 if visible:
                     yield _sse({"type": "chunk", "content": visible})
 
-                # Tool call chunks arrive fragmented across multiple stream events;
-            # index is stable per tool call, so we accumulate name+args by index
+            # 工具调用在流式输出中是分片到达的：
+            # chunk 1: id="call_xxx", function.name="query_articl"
+            # chunk 2: function.name="es", function.arguments="{\"keywor"
+            # chunk 3: function.arguments="d\": \"AI\"}"
+            # 同一个 tool call 的 index 稳定，按 index 聚合 name + args
             if delta.tool_calls:
                 for tc in delta.tool_calls:
                     idx = tc.index
@@ -305,6 +352,7 @@ async def run_react(
             return
 
         # ── 有工具调用 → 执行工具，再循环 ─────────────────────────────────────
+        # 把 assistant 的工具调用意图加入消息历史（content 必须为 null 而非空字符串）
         tool_calls_list = [
             {
                 "id": tc["id"],
@@ -313,13 +361,13 @@ async def run_react(
             }
             for tc in tool_calls_map.values()
         ]
-        # OpenAI API requires content=null (not empty string) when tool_calls are present
         messages.append({
             "role": "assistant",
-            "content": text_content or None,
+            "content": text_content or None,  # OpenAI 要求 tool_calls 时 content=null
             "tool_calls": tool_calls_list,
         })
 
+        # 逐个执行工具，结果回传给 LLM
         for tc in tool_calls_map.values():
             tool_name = tc["name"]
             try:
@@ -331,8 +379,10 @@ async def run_react(
             result = await execute_tool(tool_name, tool_args, db_pool=db_pool)
             logger.info(f"[ReAct] 工具 {tool_name} 结果: {str(result)[:200]}")
 
+            # 通知前端：工具已执行及结果（用于 UI 展示工具调用过程）
             yield _sse({"type": "tool_call", "tool": tool_name, "args": tool_args, "result": result})
 
+            # 工具结果以 "tool" role 消息回传，LLM 下一轮据此生成回复
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc["id"],
@@ -343,4 +393,10 @@ async def run_react(
 
 
 def _sse(data: dict) -> str:
+    """
+    包装 SSE（Server-Sent Events）格式的一行数据。
+
+    SSE 协议要求每行以 "data: " 开头，以双换行符结束。
+    前端 EventSource 会自动解析 data 字段中的 JSON。
+    """
     return "data: " + json.dumps(data, ensure_ascii=False) + "\n\n"
